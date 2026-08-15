@@ -298,8 +298,15 @@ for (const vehicle of selection.vehicles) {
       best.route.exposedSeconds.toFixed(0) + "s in view, longest unbroken " +
       best.route.longestExposedRun.toFixed(0) + "s");
     console.log("");
-    console.log("  " + cut.toFixed(0) + "% less time in view for " + detour.toFixed(0) +
-      "% more distance, with " + (best.endurance.marginFraction * 100).toFixed(0) +
+    // The planned route can come out SHORTER than the direct one. Weight zero
+    // minimises distance plus climb, not distance, so adding an exposure term
+    // can push the search onto a flatter line that is fewer metres overall.
+    // Printing that as "-11% more distance" reads like a bug.
+    const distanceWord = detour >= 0
+      ? detour.toFixed(0) + "% more distance"
+      : Math.abs(detour).toFixed(0) + "% LESS distance - the concealed line is also flatter";
+    console.log("  " + cut.toFixed(0) + "% less time in view for " + distanceWord +
+      ", with " + (best.endurance.marginFraction * 100).toFixed(0) +
       "% of endurance still in reserve.");
     console.log("  Chosen by sweeping platform and exposure weight together and keeping the");
     console.log("  least-seen route that still fits the battery.");
