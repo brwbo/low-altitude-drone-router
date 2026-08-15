@@ -114,6 +114,56 @@ check("shadow ratio inverts to the right elevation",
 check("shadow bearing is opposite the sun",
   Math.abs(((shadowBearingFromSun(expected.sunAzimuth) - expected.sunAzimuth + 360) % 360) - 180) < 0.01);
 
+// ------------------------------------------------------------ early warning
+console.log("\nEARLY WARNING  observers must buy time the town cannot buy itself");
+
+const { selectObservers, warningFromTownItself } = await import("../src/warning.js");
+
+// Town on low ground, which is the hard case and where towns actually are.
+let townIndex = 400 * dem.width + 400;
+for (let y = 300; y < dem.height - 300; y += 2) {
+  for (let x = 300; x < dem.width - 300; x += 2) {
+    const i = y * dem.width + x;
+    if (dem.elev[i] < dem.elev[townIndex]) townIndex = i;
+  }
+}
+const town = { x: townIndex % dem.width, y: Math.floor(townIndex / dem.width) };
+const warnOpts = { droneAltitudeMetres: 1200, sensorRangeMetres: 15000, maxRangeMetres: 18000 };
+
+const baseline = warningFromTownItself(dem, town, warnOpts);
+const spotters = candidateSites(dem, 110, null);
+const sited = selectObservers(dem, town, spotters, 3, warnOpts);
+
+console.log("  town at " + dem.elev[townIndex] + " m sees itself " +
+  baseline.worstWarningSeconds.toFixed(0) + " s of warning on its worst approach");
+console.log("  3 sited observers give " + sited.worstWarningSeconds.toFixed(0) + " s");
+check("sited observers beat standing in the town", sited.worstWarningSeconds > baseline.worstWarningSeconds,
+  sited.worstWarningSeconds.toFixed(0) + " s vs " + baseline.worstWarningSeconds.toFixed(0) + " s");
+
+// Worst case can never exceed the average. Catches a sign or index slip.
+check("worst approach is no better than the average",
+  sited.worstWarningSeconds <= sited.meanWarningSeconds + 0.001,
+  sited.worstWarningSeconds.toFixed(0) + " s worst vs " + sited.meanWarningSeconds.toFixed(0) + " s mean");
+
+// A drone flying HIGHER clears the terrain sooner and is seen further out, so
+// warning must increase with altitude. An inverted ceiling test fails this.
+const low = selectObservers(dem, town, spotters, 3, { ...warnOpts, droneAltitudeMetres: 800 });
+const high = selectObservers(dem, town, spotters, 3, { ...warnOpts, droneAltitudeMetres: 2500 });
+console.log("  drone at  800 m -> " + low.meanWarningSeconds.toFixed(0) + " s average warning");
+console.log("  drone at 2500 m -> " + high.meanWarningSeconds.toFixed(0) + " s average warning");
+check("a higher drone is detected further out", high.meanWarningSeconds > low.meanWarningSeconds,
+  high.meanWarningSeconds.toFixed(0) + " s vs " + low.meanWarningSeconds.toFixed(0) + " s");
+
+// Each extra observer must never reduce warning, since the network takes the
+// earliest acquisition.
+let monotonic = true;
+for (let i = 1; i < sited.sites.length; i++) {
+  if (sited.sites[i].worstWarningSeconds < sited.sites[i - 1].worstWarningSeconds - 0.001) {
+    monotonic = false;
+  }
+}
+check("adding an observer never reduces warning", monotonic);
+
 console.log("");
 if (failures > 0) {
   console.log(failures + " CHECK(S) FAILED - do not build on this");
