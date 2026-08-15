@@ -9,6 +9,18 @@
 // Method is a radial sweep: cast rays outward from the threat and track the
 // steepest slope seen so far along each ray. Per-cell ray casting over 1.7
 // million cells is roughly a hundred times more work and freezes the page.
+//
+// WHAT BLOCKS THE LINE OF SIGHT is `options.surface`, not the bare ground.
+// Pass a surface of ground + building and tree heights and a drone hidden
+// behind a treeline or a building row is masked, exactly as it is behind a
+// ridge. This matters most where it is least intuitive: on flat ground the
+// terrain hides nothing, so buildings and treelines are the ONLY cover, and a
+// sweep over bare `dem.elev` finds no corridor at all where one plainly exists.
+// The default surface is the bare ground, so callers that pass nothing keep
+// the terrain-only behaviour. The threat's own eye still sits at ground level
+// plus its mast height, because the mast height already says how far above the
+// ground the sensor is - the surface only decides what stands BETWEEN the
+// sensor and the target.
 
 const NEVER_HIDDEN = -Infinity;
 
@@ -23,12 +35,19 @@ export function computeCeiling(dem, threat, options) {
   const height = dem.height;
   const cellSize = dem.cellSize;
   const elev = dem.elev;
+  // What stands between the sensor and the target. Buildings and trees block a
+  // sightline the same way terrain does; with no surface supplied this is the
+  // bare ground and the result is a terrain-only viewshed.
+  const surface = opts.surface || dem.elev;
 
   const ceiling = new Float32Array(width * height);
   ceiling.fill(Infinity);
 
   const tx = threat.x;
   const ty = threat.y;
+  // The eye sits on the ground plus the mast, not on top of whatever obstacle
+  // happens to occupy the threat cell - the mast height is the operator's
+  // statement of how high the sensor is.
   const threatAltitude = elev[ty * width + tx] + observerHeight;
 
   // The threat's own cell: it sees itself at any height.
@@ -67,7 +86,9 @@ export function computeCeiling(dem, threat, options) {
       }
 
       const index = y * width + x;
-      const groundAltitude = elev[index];
+      // The blocking height is the surface - ground plus anything standing on
+      // it - so a building or treeline casts a line-of-sight shadow behind it.
+      const groundAltitude = surface[index];
 
       // Ceiling here depends only on what blocks BETWEEN the threat and this
       // cell, so it is computed before this cell updates the running maximum.

@@ -149,8 +149,18 @@ export function findPath(dem, start, goal, grids, options) {
         // Being in shadow only helps where something can see you; in dead
         // ground it changes nothing.
         let seen = exposurePenalty * stepMetres * grids.exposure[next];
-        if (grids.shadow && grids.shadow[next] === 1) {
-          seen = seen * (1 - shadowDiscount);
+        if (grids.shadow && grids.shadow[next] === 1 && shadowDiscount > 0) {
+          // Sun shadow only conceals from OPTICAL sensors. Thermal reads a warm
+          // airframe against cool shaded ground and can see it BETTER there, so
+          // the discount applies to the optical share of the watchers only -
+          // the same reasoning glare.js already uses for the sun. opticalShare
+          // is a per-cell 0..1 fraction; with none supplied the whole penalty
+          // is discounted, preserving the previous behaviour.
+          let opticalShare = 1;
+          if (grids.opticalShare) {
+            opticalShare = grids.opticalShare[next];
+          }
+          seen = seen * (1 - shadowDiscount * opticalShare);
         }
         stepCost = stepCost + seen / speed;
       }

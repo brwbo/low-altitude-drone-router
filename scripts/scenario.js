@@ -7,6 +7,8 @@ import fs from "node:fs";
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, combineCeilings, exposureCount } from "../src/viewshed.js";
 import { hiddenFraction } from "../src/corridor.js";
+import { loadObstacleHeightsSync } from "../src/obstaclesNode.js";
+import { buildSurface } from "../src/obstacles.js";
 import { solarPosition, sunTimes } from "../src/sun.js";
 import { computeShadow } from "../src/shadow.js";
 import { computeGlare, weightedExposure, glareCoverage, isOptical } from "../src/glare.js";
@@ -34,6 +36,22 @@ const dem = loadDemSync();
 const lat = (dem.latTop + dem.latBottom) / 2;
 const lon = (dem.lonLeft + dem.lonRight) / 2;
 const cellCount = dem.width * dem.height;
+
+// Buildings and trees, if a prepared obstacle grid is present. The surface -
+// ground plus whatever stands on it - is what the viewshed sweeps over, so a
+// treeline or a building row masks a drone behind it. With no obstacle file
+// this is the bare ground and the run is unchanged. On flat steppe, where the
+// terrain hides nothing, this is the difference between a corridor and none.
+const obstacleHeight = loadObstacleHeightsSync(dem);
+const surface = buildSurface(dem, obstacleHeight);
+if (obstacleHeight) {
+  let obstructed = 0;
+  for (let i = 0; i < obstacleHeight.length; i++) {
+    if (obstacleHeight[i] > 0) obstructed = obstructed + 1;
+  }
+  console.log("obstacles " + ((obstructed / obstacleHeight.length) * 100).toFixed(1) +
+    "% of cells carry a building or tree (masking surface active)");
+}
 
 // Metres of extra travel worth accepting to avoid one second of exposure.
 // Calibrated by sweeping: 0 gives 570 s exposed, 50 gives 192 s for a 30%
@@ -85,15 +103,36 @@ console.log("sun     " + sun.elevation.toFixed(1) + " deg, " + sun.azimuth.toFix
 
 console.log("\n--- threats (operator input) ---");
 const ceilings = [];
+const opticalCeilings = [];
 for (const threat of threats) {
-  ceilings.push(computeCeiling(dem, threat, {
+  const threatCeiling = computeCeiling(dem, threat, {
     observerHeight: threat.mastHeight,
     maxRangeMetres: threat.maxRangeMetres,
-  }));
+    surface: surface,
+  });
+  ceilings.push(threatCeiling);
+  // Optical watchers are tracked separately so sun shadow only discounts the
+  // ground THEY can see - thermal and radar look straight through shade.
+  if (isOptical(threat)) {
+    opticalCeilings.push(threatCeiling);
+  }
   console.log("  " + describeThreat(threat));
 }
 const ceiling = combineCeilings(ceilings, cellCount);
 const slope = computeSlope(dem);
+
+// Per-cell fraction of the watchers that are optical, at the low-cruise
+// height used for routing. Sun shadow is worth only this share, because a
+// thermal sensor sees a drone in shade as well as in sun.
+function opticalShareAt(heightAboveGround) {
+  const share = new Float32Array(cellCount);
+  const allCount = exposureCount(dem, ceilings, heightAboveGround);
+  const opticalCount = exposureCount(dem, opticalCeilings, heightAboveGround);
+  for (let i = 0; i < cellCount; i++) {
+    share[i] = allCount[i] > 0 ? opticalCount[i] / allCount[i] : 0;
+  }
+  return share;
+}
 
 // Where an observer at each threat would be looking into the sun. Optical
 // threats only - radar does not care what the sun is doing, and thermal can
@@ -129,7 +168,11 @@ for (const id of order) {
   // Weighted, not counted: a dazzled optical observer counts for half.
   const exposure = weightedExposure(dem, ceilings, glares, vehicle.heightAboveGround,
     { glareDiscount: 0.5 });
-  const grids = { passable: passable, exposure: exposure, shadow: shadowResult.shadow, elev: dem.elev };
+  const opticalShare = opticalShareAt(vehicle.heightAboveGround);
+  const grids = {
+    passable: passable, exposure: exposure, opticalShare: opticalShare,
+    shadow: shadowResult.shadow, elev: dem.elev,
+  };
 
   // Direct is the shortest passable route, ignoring who can see it. Planned
   // weights exposure heavily. Both run through the same pathfinder, so the
@@ -205,7 +248,11 @@ for (let minute = 180; minute <= 1110; minute += 30) {
   const exposureNow = weightedExposure(dem, ceilings, g, reference.heightAboveGround,
     { glareDiscount: 0.5 });
   const r = findPath(dem, start, goal,
-    { passable: referencePassable, exposure: exposureNow, shadow: shade.shadow, elev: dem.elev },
+    {
+      passable: referencePassable, exposure: exposureNow,
+      opticalShare: opticalShareAt(reference.heightAboveGround),
+      shadow: shade.shadow, elev: dem.elev,
+    },
     { vehicle: reference, exposurePenalty: EXPOSURE_PENALTY, shadowDiscount: 0.35 });
   if (!r.found) {
     continue;
