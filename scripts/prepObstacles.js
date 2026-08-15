@@ -129,7 +129,14 @@ async function main() {
   console.log("fetching OSM obstacles for " + bbox + " ...");
   const response = await fetch(OVERPASS_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      // Overpass rejects Node's default fetch User-Agent with HTTP 406.
+      // The identical request from curl succeeds, because curl sends one of
+      // its own. Any non-empty value is accepted; a descriptive one is polite
+      // to a free public service.
+      "User-Agent": "umbra-terrain-corridor-planner/0.1 (hackathon prototype)",
+    },
     body: "data=" + encodeURIComponent(query),
   });
   if (!response.ok) {
