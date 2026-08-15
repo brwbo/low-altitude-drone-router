@@ -66,9 +66,15 @@ const cell = (s) => {
   const c = lonLatToGrid(dem, s.lat, s.lon);
   return { x: Math.round(c.x), y: Math.round(c.y) };
 };
-const start = cell(mission.mission.start);
-const goal = cell(mission.mission.goal);
-const sun = solarPosition(new Date(mission.mission.timeUtc), 48.17, 24.5);
+// Start, goal, threats AND time are all fixed here. Reading any of them from
+// the mission file couples the suite to demo tuning: the threats were pinned
+// first, but start and goal were still being read from the file, so retuning
+// the demo mission left the hardcoded threats nowhere near the route and
+// "planning reduces exposure" failed on 0 s vs 0 s. A control that breaks when
+// the scenario is retuned is testing the scenario, not the router.
+const start = { x: 568, y: 669 };
+const goal = { x: 482, y: 276 };
+const sun = solarPosition(new Date("2026-08-15T04:30:00Z"), 48.17, 24.5);
 const shadow = computeShadow(dem, sun).shadow;
 
 console.log("\nCORRIDOR  the planned route must be a route, and a sane one");
