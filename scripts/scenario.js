@@ -12,6 +12,8 @@ import { solarPosition, sunTimes } from "../src/sun.js";
 import { computeShadow, glareIsEffective } from "../src/shadow.js";
 import { planRoute } from "../src/route.js";
 import { encodePng, hillshadeRgb, blend } from "../src/png.js";
+import { parseThreats, describeThreat, ThreatInputError } from "../src/threats.js";
+import { lonLatToGrid, insideBounds, describeBounds } from "../src/coords.js";
 import {
   VEHICLES,
   computeSlope,
@@ -21,7 +23,9 @@ import {
   computeUsable,
 } from "../src/vehicles.js";
 
-const when = new Date(process.argv[2] || "2026-08-15T04:30:00Z");
+const missionFile = process.argv[2] || "data/threats.json";
+const mission = JSON.parse(fs.readFileSync(missionFile, "utf8"));
+const when = new Date(process.argv[3] || mission.mission.timeUtc);
 
 const dem = loadDemSync();
 const lat = (dem.latTop + dem.latBottom) / 2;
@@ -32,14 +36,45 @@ const pct = (f) => (f * 100).toFixed(1) + "%";
 const NAMES = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 const bearingName = (d) => NAMES[Math.round(d / 22.5) % 16];
 
-const threats = [
-  { x: 430, y: 300, label: "north ridge" },
-  { x: 900, y: 900, label: "south ridge" },
-];
-const start = { x: 60, y: 1180 };
-const goal = { x: 1270, y: 90 };
+// Threats, start and goal all come from the mission file. Parsing throws with
+// a message naming the field and the acceptable range rather than coercing,
+// because a silently clamped coordinate produces a confidently wrong map.
+let threats;
+try {
+  threats = parseThreats(mission.threats, dem);
+} catch (error) {
+  if (error instanceof ThreatInputError) {
+    console.error("\nBad threat input in " + missionFile + ":\n  " + error.message + "\n");
+    process.exit(1);
+  }
+  throw error;
+}
+
+function missionPoint(spec, name) {
+  if (!spec || !Number.isFinite(spec.lat) || !Number.isFinite(spec.lon)) {
+    console.error("\nmission." + name + " needs lat and lon\n");
+    process.exit(1);
+  }
+  if (!insideBounds(dem, spec.lat, spec.lon)) {
+    console.error(
+      "\nmission." + name + " at " + spec.lat + "," + spec.lon +
+      " is outside the loaded map (" + describeBounds(dem) + ")\n"
+    );
+    process.exit(1);
+  }
+  const cell = lonLatToGrid(dem, spec.lat, spec.lon);
+  return {
+    x: Math.min(dem.width - 1, Math.max(0, Math.round(cell.x))),
+    y: Math.min(dem.height - 1, Math.max(0, Math.round(cell.y))),
+    label: spec.label || name,
+  };
+}
+
+const start = missionPoint(mission.mission.start, "start");
+const goal = missionPoint(mission.mission.goal, "goal");
 
 console.log("\n=== SCENARIO ===");
+console.log("mission " + missionFile);
 console.log(
   "grid   " + dem.width + " x " + dem.height + " at " + dem.cellSize + " m  (" +
   ((dem.width * dem.cellSize) / 1000).toFixed(1) + " x " +
@@ -64,16 +99,21 @@ console.log(
 
 // --- terrain, shared ------------------------------------------------------
 const slope = computeSlope(dem);
-console.log("\n--- threats ---");
+console.log("\n--- threats (operator input, " + threats.length + ") ---");
 const ceilings = [];
 for (const threat of threats) {
-  ceilings.push(computeCeiling(dem, threat, { observerHeight: 2 }));
-  console.log(
-    "  " + threat.label + " at " + threat.x + "," + threat.y +
-    ", ground " + dem.elev[threat.y * dem.width + threat.x] + " m"
+  ceilings.push(
+    computeCeiling(dem, threat, {
+      observerHeight: threat.mastHeight,
+      maxRangeMetres: threat.maxRangeMetres,
+    })
   );
+  console.log("  " + describeThreat(threat));
 }
 const ceiling = combineCeilings(ceilings, cellCount);
+
+console.log("\nroute   " + start.label + " -> " + goal.label +
+  "  (" + start.x + "," + start.y + " to " + goal.x + "," + goal.y + ")");
 
 // --- per vehicle ----------------------------------------------------------
 const order = ["ugvTracked", "ugvWheeled", "quadNap", "quadLow", "quadFpv"];

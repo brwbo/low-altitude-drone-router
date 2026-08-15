@@ -1,0 +1,40 @@
+{
+  "_comment": "Enemy sensor positions are ALWAYS operator input. Nothing in this codebase detects, identifies or locates anything - it computes geometry from coordinates a human entered. Positions must fall inside the loaded map: lat 48.0001 to 48.3399, lon 24.2304 to 24.7693.",
+  "_placementNote": "Threats on commanding ground dominate the result. These three sit on the highest points within 6 km of the route (2052 m, 1720 m, 1583 m). Put a sensor in a valley and it sees almost nothing, which is correct but makes for a demo that shows no red at all.",
+  "mission": {
+    "start": { "label": "forward logistics point", "lat": 48.0250, "lon": 24.2500 },
+    "goal": { "label": "resupply drop", "lat": 48.3200, "lon": 24.7500 },
+    "timeUtc": "2026-08-15T04:30:00Z"
+  },
+  "threats": [
+    {
+      "label": "Hoverla summit observation post",
+      "type": "optical",
+      "lat": 48.1604,
+      "lon": 24.4995,
+      "mastHeight": 4,
+      "maxRangeKm": 20,
+      "confidence": "stated",
+      "source": "operator input"
+    },
+    {
+      "label": "west ridge EW mast",
+      "type": "ew",
+      "lat": 48.1507,
+      "lon": 24.3661,
+      "mastHeight": 18,
+      "maxRangeKm": 30,
+      "confidence": "stated",
+      "source": "operator input"
+    },
+    {
+      "label": "east spur radar",
+      "type": "radar",
+      "position": "48.1831, 24.6352",
+      "mastHeight": 12,
+      "maxRangeKm": 25,
+      "confidence": "medium",
+      "source": "operator input"
+    }
+  ]
+}
