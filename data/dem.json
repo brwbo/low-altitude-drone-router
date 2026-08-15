@@ -1,0 +1,19 @@
+{
+  "width": 1334,
+  "height": 1261,
+  "cellSizeMetres": 30.0,
+  "latTop": 48.339861,
+  "latBottom": 48.000139,
+  "lonLeft": 24.230417,
+  "lonRight": 24.769306,
+  "minElevation": 442,
+  "maxElevation": 2054,
+  "dtype": "int16",
+  "units": "metres",
+  "rowOrder": "north to south",
+  "area": "Carpathians around Hoverla, Ukraine",
+  "source": "Copernicus DEM GLO-30 (DSM - includes tree and building height)",
+  "sourceUrl": "https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N48_00_E024_00_DEM/Copernicus_DSM_COG_10_N48_00_E024_00_DEM.tif",
+  "licence": "Copernicus DEM, free for general public. Credit ESA / Copernicus.",
+  "retrieved": "2026-08-15"
+}
