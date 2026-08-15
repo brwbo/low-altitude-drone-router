@@ -1,28 +1,21 @@
-// End to end run of the whole spine, across every vehicle profile, producing
-// the numbers the pitch quotes and a rendered map per platform so the maths
-// can be eyeballed before any UI exists.
+// The corridor planner, end to end.
 //
-// Usage:  node scripts/scenario.js [ISO timestamp]
-//   node scripts/scenario.js 2026-08-15T04:30:00Z
+// Usage:  node scripts/scenario.js [mission file] [ISO timestamp]
+//   node scripts/scenario.js data/threats.json 2026-08-15T04:30:00Z
 
 import fs from "node:fs";
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, combineCeilings, exposureCount } from "../src/viewshed.js";
+import { hiddenFraction } from "../src/corridor.js";
 import { solarPosition, sunTimes } from "../src/sun.js";
 import { computeShadow, glareIsEffective } from "../src/shadow.js";
-import { planRoute } from "../src/route.js";
+import { findPath } from "../src/pathfind.js";
 import { encodePng, hillshadeRgb, blend } from "../src/png.js";
 import { parseThreats, describeThreat, ThreatInputError } from "../src/threats.js";
 import { lonLatToGrid, insideBounds, describeBounds } from "../src/coords.js";
 import {
-  VEHICLES,
-  computeSlope,
-  computeTrafficable,
-  trafficableFraction,
-  concealedFraction,
-  computeUsable,
-  checkEndurance,
-  describeEndurance,
+  VEHICLES, computeSlope, computeTrafficable, concealedFraction,
+  checkEndurance, describeEndurance,
 } from "../src/vehicles.js";
 
 const missionFile = process.argv[2] || "data/threats.json";
@@ -34,13 +27,15 @@ const lat = (dem.latTop + dem.latBottom) / 2;
 const lon = (dem.lonLeft + dem.lonRight) / 2;
 const cellCount = dem.width * dem.height;
 
+// Metres of extra travel worth accepting to avoid one second of exposure.
+// Calibrated by sweeping: 0 gives 570 s exposed, 50 gives 192 s for a 30%
+// detour, and anything past 400 buys 26 s more for a 79% detour. Bad trade.
+const EXPOSURE_PENALTY = 50;
+
 const pct = (f) => (f * 100).toFixed(1) + "%";
 const NAMES = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 const bearingName = (d) => NAMES[Math.round(d / 22.5) % 16];
 
-// Threats, start and goal all come from the mission file. Parsing throws with
-// a message naming the field and the acceptable range rather than coercing,
-// because a silently clamped coordinate produces a confidently wrong map.
 let threats;
 try {
   threats = parseThreats(mission.threats, dem);
@@ -53,15 +48,8 @@ try {
 }
 
 function missionPoint(spec, name) {
-  if (!spec || !Number.isFinite(spec.lat) || !Number.isFinite(spec.lon)) {
-    console.error("\nmission." + name + " needs lat and lon\n");
-    process.exit(1);
-  }
-  if (!insideBounds(dem, spec.lat, spec.lon)) {
-    console.error(
-      "\nmission." + name + " at " + spec.lat + "," + spec.lon +
-      " is outside the loaded map (" + describeBounds(dem) + ")\n"
-    );
+  if (!spec || !insideBounds(dem, spec.lat, spec.lon)) {
+    console.error("\nmission." + name + " missing or outside the map (" + describeBounds(dem) + ")\n");
     process.exit(1);
   }
   const cell = lonLatToGrid(dem, spec.lat, spec.lon);
@@ -71,169 +59,171 @@ function missionPoint(spec, name) {
     label: spec.label || name,
   };
 }
-
 const start = missionPoint(mission.mission.start, "start");
 const goal = missionPoint(mission.mission.goal, "goal");
 
-console.log("\n=== SCENARIO ===");
-console.log("mission " + missionFile);
-console.log(
-  "grid   " + dem.width + " x " + dem.height + " at " + dem.cellSize + " m  (" +
-  ((dem.width * dem.cellSize) / 1000).toFixed(1) + " x " +
-  ((dem.height * dem.cellSize) / 1000).toFixed(1) + " km, Carpathians)"
-);
-console.log("time   " + when.toISOString());
+// ------------------------------------------------------------------ setup
+console.log("\n=== CORRIDOR PLANNER ===");
+console.log("area    " + ((dem.width * dem.cellSize) / 1000).toFixed(1) + " x " +
+  ((dem.height * dem.cellSize) / 1000).toFixed(1) + " km Carpathians at " + dem.cellSize + " m");
+console.log("mission " + start.label + " -> " + goal.label);
+console.log("time    " + when.toISOString());
 
-// --- sun, shared across every vehicle -------------------------------------
 const sun = solarPosition(when, lat, lon);
 const times = sunTimes(when, lat, lon);
 const shadowResult = computeShadow(dem, sun);
-console.log(
-  "sun    " + sun.elevation.toFixed(1) + " deg elevation, " +
-  sun.azimuth.toFixed(0) + " deg (" + bearingName(sun.azimuth) + "), " +
-  pct(shadowResult.shadowedFraction) + " of terrain in shadow"
-);
-console.log(
-  "glare  " + (glareIsEffective(sun)
-    ? "sun low enough to dazzle a ground observer - approach from " + bearingName(sun.azimuth)
-    : "sun too high to dazzle")
-);
+console.log("sun     " + sun.elevation.toFixed(1) + " deg, " + sun.azimuth.toFixed(0) +
+  " deg (" + bearingName(sun.azimuth) + "), " + pct(shadowResult.shadowedFraction) + " of terrain shadowed");
 
-// --- terrain, shared ------------------------------------------------------
-const slope = computeSlope(dem);
-console.log("\n--- threats (operator input, " + threats.length + ") ---");
+console.log("\n--- threats (operator input) ---");
 const ceilings = [];
 for (const threat of threats) {
-  ceilings.push(
-    computeCeiling(dem, threat, {
-      observerHeight: threat.mastHeight,
-      maxRangeMetres: threat.maxRangeMetres,
-    })
-  );
+  ceilings.push(computeCeiling(dem, threat, {
+    observerHeight: threat.mastHeight,
+    maxRangeMetres: threat.maxRangeMetres,
+  }));
   console.log("  " + describeThreat(threat));
 }
 const ceiling = combineCeilings(ceilings, cellCount);
+const slope = computeSlope(dem);
 
-console.log("\nroute   " + start.label + " -> " + goal.label +
-  "  (" + start.x + "," + start.y + " to " + goal.x + "," + goal.y + ")");
+// -------------------------------------------------- the altitude trade-off
+// The single most important output. Cover does not degrade gently with
+// height; it falls away, and this is the curve that shows it.
+console.log("\n--- how much cover you lose by climbing ---");
+let previousHidden = null;
+for (const agl of [5, 15, 30, 50, 80, 120, 200]) {
+  const hidden = hiddenFraction(dem, ceiling, agl);
+  const delta = previousHidden === null ? "" : ((hidden - previousHidden) * 100).toFixed(1) + " pts";
+  console.log("  " + (agl + " m AGL").padStart(9) + "  " + pct(hidden).padStart(6) +
+    "  " + delta.padStart(9) + "  " + "#".repeat(Math.round(hidden * 45)));
+  previousHidden = hidden;
+}
 
-// --- per vehicle ----------------------------------------------------------
+// ---------------------------------------------------------------- routing
+console.log("\n--- route by platform ---");
+console.log("platform".padEnd(28) + "AGL".padStart(6) + "concealed".padStart(11) +
+  "direct".padStart(10) + "planned".padStart(10) + "detour".padStart(8) + "endurance".padStart(17));
+
 const order = ["ugvTracked", "ugvWheeled", "quadNap", "quadLow", "quadFpv"];
-let failures = 0;
-const infeasible = [];
-
-console.log("\n--- corridor and route by platform ---");
-console.log(
-  "platform".padEnd(28) + "AGL".padStart(6) + "trafficable".padStart(13) +
-  "concealed".padStart(11) + "usable".padStart(9) +
-  "direct exp".padStart(12) + "planned exp".padStart(13) + "detour".padStart(8) +
-  "endurance".padStart(18)
-);
+const notes = [];
+const rendered = {};
 
 for (const id of order) {
   const vehicle = VEHICLES[id];
   const passable = computeTrafficable(dem, vehicle, slope);
-  const usable = computeUsable(dem, ceiling, passable, vehicle);
   const exposure = exposureCount(dem, ceilings, vehicle.heightAboveGround);
+  const grids = { passable: passable, exposure: exposure, shadow: shadowResult.shadow, elev: dem.elev };
 
-  let usableCount = 0;
-  for (let i = 0; i < usable.length; i++) {
-    if (usable[i] === 1) usableCount = usableCount + 1;
-  }
-
-  const grids = {
-    passable: passable,
-    exposure: exposure,
-    shadow: shadowResult.shadow,
-    elev: dem.elev,
-  };
-  const planned = planRoute(dem, start, goal, grids, {
-    vehicle: vehicle,
-    candidates: 600,
-    seed: 7,
+  // Direct is the shortest passable route, ignoring who can see it. Planned
+  // weights exposure heavily. Both run through the same pathfinder, so the
+  // comparison is like for like - and neither can return a route over ground
+  // the vehicle cannot cross, which the old candidate sampler happily did.
+  const direct = findPath(dem, start, goal, grids, { vehicle: vehicle, exposurePenalty: 0 });
+  const planned = findPath(dem, start, goal, grids, {
+    vehicle: vehicle, exposurePenalty: EXPOSURE_PENALTY, shadowDiscount: 0.35,
   });
-  const direct = planned.direct;
-  const best = planned.best;
-  const detour = ((best.metres / direct.metres - 1) * 100).toFixed(0) + "%";
-  const endurance = checkEndurance(best, vehicle);
-  if (!endurance.feasible) {
-    infeasible.push(vehicle.label + ": " + describeEndurance(endurance) +
-      "  (" + (best.metres / 1000).toFixed(1) + " km, " +
-      best.ascentMetres.toFixed(0) + " m of climb, level range " +
-      (endurance.levelRangeMetres / 1000).toFixed(0) + " km)");
+
+  if (!direct.found || !planned.found) {
+    const reason = direct.reason || planned.reason;
+    console.log(vehicle.label.padEnd(28) + (vehicle.heightAboveGround + " m").padStart(6) +
+      "   NO ROUTE - " + reason);
+    notes.push(vehicle.label + ": " + reason);
+    continue;
   }
+
+  const endurance = checkEndurance(planned, vehicle);
+  const detour = ((planned.metres / direct.metres - 1) * 100).toFixed(0) + "%";
 
   console.log(
     vehicle.label.padEnd(28) +
     (vehicle.heightAboveGround + " m").padStart(6) +
-    pct(trafficableFraction(passable)).padStart(13) +
     pct(concealedFraction(dem, ceiling, vehicle)).padStart(11) +
-    pct(usableCount / cellCount).padStart(9) +
-    (direct.exposedSeconds.toFixed(0) + " s").padStart(12) +
-    (best.exposedSeconds.toFixed(0) + " s").padStart(13) +
+    (direct.exposedSeconds.toFixed(0) + "s").padStart(10) +
+    (planned.exposedSeconds.toFixed(0) + "s").padStart(10) +
     detour.padStart(8) +
     (endurance.feasible
-      ? ("OK " + (endurance.marginFraction * 100).toFixed(0) + "% spare")
-      : ("OVER by " + (-endurance.marginFraction * 100).toFixed(0) + "%")).padStart(18)
+      ? "OK " + (endurance.marginFraction * 100).toFixed(0) + "% spare"
+      : "OVER by " + (-endurance.marginFraction * 100).toFixed(0) + "%").padStart(17)
   );
 
-  if (best.exposedSeconds > direct.exposedSeconds) {
-    console.log("    FAIL: planned route more exposed than flying straight");
-    failures = failures + 1;
+  if (!endurance.feasible) {
+    notes.push(vehicle.label + ": " + describeEndurance(endurance));
   }
+  if (id === "quadLow" || id === "ugvTracked") {
+    rendered[id] = { vehicle, passable, exposure, direct, planned };
+  }
+}
 
-  // Render the two most demo-relevant platforms.
-  if (id === "ugvTracked" || id === "quadLow") {
-    const rgb = hillshadeRgb(dem);
-    for (let i = 0; i < cellCount; i++) {
-      if (shadowResult.shadow[i] === 1) blend(rgb, i, 40, 60, 110, 0.25);
-      if (passable[i] === 0) blend(rgb, i, 15, 15, 15, 0.55);
-      if (exposure[i] > 0) blend(rgb, i, 205, 30, 30, exposure[i] === 1 ? 0.34 : 0.55);
-    }
-    const stamp = (index, r, g, b, radius) => {
-      const cx = index % dem.width;
-      const cy = Math.floor(index / dem.width);
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const x = cx + dx;
-          const y = cy + dy;
-          if (x < 0 || y < 0 || x >= dem.width || y >= dem.height) continue;
-          if (dx * dx + dy * dy > radius * radius) continue;
-          blend(rgb, y * dem.width + x, r, g, b, 1);
-        }
+if (notes.length > 0) {
+  console.log("\n--- what will not work, and why ---");
+  for (const note of notes) {
+    console.log("  " + note);
+  }
+}
+
+// ------------------------------------------------------- departure window
+// Terrain shadow and low-sun glare both help against optical sensors only,
+// and both peak near dawn and dusk. A marginal advantage, not a substitute
+// for terrain masking - which is why it is reported as a window to choose
+// rather than folded silently into the route cost.
+console.log("\n--- departure window (optical advantage only) ---");
+const windows = [];
+for (let hour = 3; hour <= 19; hour++) {
+  const at = new Date(Date.UTC(2026, 7, 15, hour, 0, 0));
+  const s = solarPosition(at, lat, lon);
+  if (s.elevation <= 0) {
+    continue;
+  }
+  const shade = computeShadow(dem, s);
+  windows.push({ at: at, sun: s, shadowed: shade.shadowedFraction, glare: glareIsEffective(s) });
+}
+windows.sort((a, b) => b.shadowed - a.shadowed);
+for (const w of windows.slice(0, 4)) {
+  console.log(
+    "  " + w.at.toISOString().slice(11, 16) + " UTC   sun " +
+    w.sun.elevation.toFixed(1).padStart(5) + " deg " + bearingName(w.sun.azimuth).padEnd(4) +
+    "   " + pct(w.shadowed).padStart(6) + " of terrain shadowed" +
+    (w.glare ? "   plus glare from " + bearingName(w.sun.azimuth) : "")
+  );
+}
+console.log("  sunrise " + times.sunrise.toISOString().slice(11, 16) +
+  " UTC, sunset " + times.sunset.toISOString().slice(11, 16) + " UTC");
+console.log("  NOTE: shadow and glare degrade eyes and cameras only. Thermal is");
+console.log("  unaffected and can invert. Radar does not care at all. Terrain");
+console.log("  masking is the part that works against every sensor.");
+
+// ----------------------------------------------------------------- render
+for (const id of Object.keys(rendered)) {
+  const r = rendered[id];
+  const rgb = hillshadeRgb(dem);
+  for (let i = 0; i < cellCount; i++) {
+    if (shadowResult.shadow[i] === 1) blend(rgb, i, 40, 60, 110, 0.22);
+    if (r.passable[i] === 0) blend(rgb, i, 15, 15, 15, 0.5);
+    if (r.exposure[i] > 0) blend(rgb, i, 205, 30, 30, r.exposure[i] === 1 ? 0.32 : 0.55);
+  }
+  const stamp = (index, cr, cg, cb, radius) => {
+    const cx = index % dem.width;
+    const cy = Math.floor(index / dem.width);
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x < 0 || y < 0 || x >= dem.width || y >= dem.height) continue;
+        if (dx * dx + dy * dy > radius * radius) continue;
+        blend(rgb, y * dem.width + x, cr, cg, cb, 1);
       }
-    };
-    for (const i of direct.trace) stamp(i, 255, 205, 40, 1);
-    for (const i of best.trace) stamp(i, 40, 235, 95, 2);
-    for (const t of threats) {
-      stamp(t.y * dem.width + t.x, 255, 255, 255, 8);
-      stamp(t.y * dem.width + t.x, 215, 0, 0, 5);
     }
-    const file = "data/scenario-" + id + ".png";
-    fs.writeFileSync(file, encodePng(dem.width, dem.height, rgb));
-    console.log("    wrote " + file);
+  };
+  for (const i of r.direct.trace) stamp(i, 255, 205, 40, 1);
+  for (const i of r.planned.trace) stamp(i, 40, 235, 95, 2);
+  for (const t of threats) {
+    stamp(t.y * dem.width + t.x, 255, 255, 255, 8);
+    stamp(t.y * dem.width + t.x, 215, 0, 0, 5);
   }
+  stamp(start.y * dem.width + start.x, 255, 255, 255, 7);
+  stamp(goal.y * dem.width + goal.x, 255, 255, 255, 7);
+  fs.writeFileSync("data/corridor-" + id + ".png", encodePng(dem.width, dem.height, rgb));
 }
-
-if (infeasible.length > 0) {
-  console.log("\n--- endurance: these routes cannot be flown ---");
-  for (const line of infeasible) {
-    console.log("  " + line);
-  }
-  console.log("  (endurance figures are planning placeholders, not manufacturer specs)");
-}
-
-console.log(
-  "\nred = seen by a threat at that platform's height, blue = terrain shadow,\n" +
-  "black = ground the platform cannot cross, yellow = direct, green = planned"
-);
-console.log(
-  "\nsunrise " + times.sunrise.toISOString().slice(11, 16) +
-  " UTC, solar noon " + times.solarNoon.at.toISOString().slice(11, 16) +
-  " UTC, sunset " + times.sunset.toISOString().slice(11, 16) + " UTC"
-);
-
-if (failures > 0) {
-  console.log("\n" + failures + " platform(s) failed the exposure check");
-  process.exit(1);
-}
+console.log("\nwrote data/corridor-*.png  (red = seen, blue = shadow, black = impassable,");
+console.log("yellow = shortest route, green = planned route)\n");

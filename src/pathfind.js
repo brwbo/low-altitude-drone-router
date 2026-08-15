@@ -77,6 +77,10 @@ export function findPath(dem, start, goal, grids, options) {
     ? opts.climbPenalty
     : vehicle ? vehicle.climbPenalty : 3;
   const exposurePenalty = opts.exposurePenalty === undefined ? 0 : opts.exposurePenalty;
+  // Fraction of the exposure penalty forgiven in terrain shadow. Bounded to
+  // [0, 0.9] so the total step cost can never reach zero or go negative.
+  const shadowDiscount = Math.max(0, Math.min(0.9,
+    opts.shadowDiscount === undefined ? 0 : opts.shadowDiscount));
   const speed = vehicle ? vehicle.speed : 5;
 
   const width = dem.width;
@@ -136,7 +140,19 @@ export function findPath(dem, start, goal, grids, options) {
         stepCost = stepCost + rise * climbPenalty;
       }
       if (exposurePenalty > 0 && grids.exposure && grids.exposure[next] > 0) {
-        stepCost = stepCost + (exposurePenalty * stepMetres * grids.exposure[next]) / speed;
+        // Shadow DISCOUNTS the exposure penalty. It must never be subtracted
+        // from the step cost directly: a negative edge weight makes Dijkstra
+        // invalid, and it produced routes eight hundred times longer than the
+        // direct one while appearing to work.
+        //
+        // Discounting exposure is also the physically correct place for it.
+        // Being in shadow only helps where something can see you; in dead
+        // ground it changes nothing.
+        let seen = exposurePenalty * stepMetres * grids.exposure[next];
+        if (grids.shadow && grids.shadow[next] === 1) {
+          seen = seen * (1 - shadowDiscount);
+        }
+        stepCost = stepCost + seen / speed;
       }
 
       const candidate = dist[current] + stepCost;
@@ -167,6 +183,7 @@ export function findPath(dem, start, goal, grids, options) {
   let ascentMetres = 0;
   let descentMetres = 0;
   let exposedSeconds = 0;
+  let shadowedSeconds = 0;
   let climbReference = dem.elev[trace[0]];
   let highest = dem.elev[trace[0]];
 
@@ -196,6 +213,9 @@ export function findPath(dem, start, goal, grids, options) {
     if (grids.exposure && grids.exposure[current] > 0) {
       exposedSeconds = exposedSeconds + stepMetres / speed;
     }
+    if (grids.shadow && grids.shadow[current] === 1) {
+      shadowedSeconds = shadowedSeconds + stepMetres / speed;
+    }
   }
 
   if (vehicle && vehicle.airborne) {
@@ -211,6 +231,7 @@ export function findPath(dem, start, goal, grids, options) {
     ascentMetres: ascentMetres,
     descentMetres: descentMetres,
     exposedSeconds: exposedSeconds,
+    shadowedSeconds: shadowedSeconds,
     blockedCells: 0,
     cost: dist[goalIndex],
   };
