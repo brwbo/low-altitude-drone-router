@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/verify.js && node scripts/verifySun.js && node scripts/verifyCorridor.js && node scripts/verifyGlare.js && node scripts/verifyObstacles.js && node scripts/verifyEdges.js && node scripts/verifyAdapt.js && node scripts/verifyLogistics.js",
+    "test": "node scripts/verify.js && node scripts/verifySun.js && node scripts/verifyCorridor.js && node scripts/verifyGlare.js && node scripts/verifyDetection.js && node scripts/verifyObstacles.js && node scripts/verifyEdges.js && node scripts/verifyAdapt.js && node scripts/verifyLogistics.js",
     "prep-obstacles": "node scripts/prepObstacles.js",
     "demo": "node scripts/scenario.js",
     "mast": "node scripts/mast.js"
