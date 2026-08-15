@@ -171,7 +171,8 @@ for (const agl of [5, 15, 30, 50, 80, 120, 200]) {
 // ---------------------------------------------------------------- routing
 console.log("\n--- route by platform ---");
 console.log("platform".padEnd(28) + "AGL".padStart(6) + "concealed".padStart(11) +
-  "direct".padStart(10) + "planned".padStart(10) + "detour".padStart(8) + "endurance".padStart(17));
+  "direct".padStart(10) + "planned".padStart(10) + "longest".padStart(9) +
+  "detour".padStart(8) + "endurance".padStart(17));
 
 const notes = [];
 const rendered = {};
@@ -217,6 +218,7 @@ for (const vehicle of selection.vehicles) {
     pct(concealedFraction(dem, ceiling, vehicle)).padStart(11) +
     (direct.exposedSeconds.toFixed(0) + "s").padStart(10) +
     (planned.exposedSeconds.toFixed(0) + "s").padStart(10) +
+    (planned.longestExposedRun.toFixed(0) + "s").padStart(9) +
     detour.padStart(8) +
     (endurance.feasible
       ? "OK " + (endurance.marginFraction * 100).toFixed(0) + "% spare"

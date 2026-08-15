@@ -194,6 +194,13 @@ export function findPath(dem, start, goal, grids, options) {
   let descentMetres = 0;
   let exposedSeconds = 0;
   let shadowedSeconds = 0;
+  // Detection is not linear in time. A sensor needs sustained dwell to
+  // acquire, classify and cue a weapon, so thirty seconds broken into ten
+  // three-second glimpses is a very different proposition from thirty
+  // continuous. The longest unbroken run is what an engagement needs.
+  let longestExposedRun = 0;
+  let currentExposedRun = 0;
+  let exposureBreaks = 0;
   let climbReference = dem.elev[trace[0]];
   let highest = dem.elev[trace[0]];
 
@@ -221,7 +228,15 @@ export function findPath(dem, start, goal, grids, options) {
       }
     }
     if (grids.exposure && grids.exposure[current] > 0) {
-      exposedSeconds = exposedSeconds + stepMetres / speed;
+      const segmentSeconds = stepMetres / speed;
+      exposedSeconds = exposedSeconds + segmentSeconds;
+      currentExposedRun = currentExposedRun + segmentSeconds;
+      if (currentExposedRun > longestExposedRun) {
+        longestExposedRun = currentExposedRun;
+      }
+    } else if (currentExposedRun > 0) {
+      exposureBreaks = exposureBreaks + 1;
+      currentExposedRun = 0;
     }
     if (grids.shadow && grids.shadow[current] === 1) {
       shadowedSeconds = shadowedSeconds + stepMetres / speed;
@@ -241,6 +256,8 @@ export function findPath(dem, start, goal, grids, options) {
     ascentMetres: ascentMetres,
     descentMetres: descentMetres,
     exposedSeconds: exposedSeconds,
+    longestExposedRun: longestExposedRun,
+    exposureBreaks: exposureBreaks,
     shadowedSeconds: shadowedSeconds,
     blockedCells: 0,
     cost: dist[goalIndex],
