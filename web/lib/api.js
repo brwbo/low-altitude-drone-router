@@ -78,8 +78,13 @@ export function mockRoute(body, hour) {
     }
   }
 
+  const directRoute = [];
+  for (let t = 0; t <= 1.0001; t += 0.1) directRoute.push([aLat + (bLat - aLat) * t, aLon + (bLon - aLon) * t]);
   return {
     route,
+    direct: { route: directRoute, exposedSeconds: 1000 },
+    planned: { route, exposedSeconds: 200 },
+    stats: { directSeconds: 1000, plannedSeconds: 200, reductionPct: 80, detourPct: 30, vehicle: "mock" },
     sun: { azimuth_deg: morning ? 95 : 265, altitude_deg: 12 },
     exposure: { rows, cols, grid, bbox: eb },
   };
