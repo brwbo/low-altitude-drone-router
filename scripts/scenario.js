@@ -19,7 +19,14 @@ import {
 } from "../src/vehicles.js";
 
 const missionFile = process.argv[2] || "data/threats.json";
-const mission = JSON.parse(fs.readFileSync(missionFile, "utf8"));
+let mission;
+try {
+  mission = JSON.parse(fs.readFileSync(missionFile, "utf8"));
+} catch (error) {
+  console.error("\nCould not read the mission file " + missionFile + ":\n  " +
+    error.message + "\n\nExpected JSON with mission.start, mission.goal and a threats array.\n");
+  process.exit(1);
+}
 const when = new Date(process.argv[3] || mission.mission.timeUtc);
 
 const dem = loadDemSync();
@@ -133,7 +140,10 @@ for (const id of order) {
   }
 
   const endurance = checkEndurance(planned, vehicle);
-  const detour = ((planned.metres / direct.metres - 1) * 100).toFixed(0) + "%";
+  // Start and goal can be the same cell if someone clicks twice in one place.
+  const detour = direct.metres > 0
+    ? ((planned.metres / direct.metres - 1) * 100).toFixed(0) + "%"
+    : "n/a";
 
   console.log(
     vehicle.label.padEnd(28) +

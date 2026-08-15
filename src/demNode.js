@@ -10,8 +10,28 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(here, "..", "data");
 
 export function loadDemSync() {
-  const meta = JSON.parse(fs.readFileSync(path.join(dataDir, "dem.json"), "utf8"));
-  const buf = fs.readFileSync(path.join(dataDir, "dem.bin"));
+  // The two data files are the one thing with no fallback, so a missing or
+  // unreadable one says exactly what is wrong rather than surfacing a stack
+  // trace with no context.
+  const metaPath = path.join(dataDir, "dem.json");
+  const binPath = path.join(dataDir, "dem.bin");
+  for (const required of [metaPath, binPath]) {
+    if (!fs.existsSync(required)) {
+      throw new Error(
+        "Elevation data missing: " + required + " not found.\n" +
+        "Both data/dem.json and data/dem.bin are required. Restore them from the\n" +
+        "repository, or regenerate from the Copernicus tile named in dem.json."
+      );
+    }
+  }
+
+  let meta;
+  try {
+    meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+  } catch (error) {
+    throw new Error("Elevation metadata " + metaPath + " is not valid JSON: " + error.message);
+  }
+  const buf = fs.readFileSync(binPath);
 
   // The byteOffset and length matter. `new Int16Array(buf)` treats the Buffer
   // as an array of numbers and silently produces garbage; this view reads the
