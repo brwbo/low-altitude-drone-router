@@ -182,14 +182,32 @@ export function computeSlope(dem) {
 // Where this vehicle can physically be at all, before anything about threats.
 // For a UGV that is a slope limit. For a rotary aircraft at low level it is
 // everywhere, because it flies over the terrain rather than across it.
-export function computeTrafficable(dem, vehicle, slope) {
+export function computeTrafficable(dem, vehicle, slope, obstacleHeight) {
   const passable = new Uint8Array(dem.width * dem.height);
+  const clearance = vehicle.obstacleClearance === undefined ? 5 : vehicle.obstacleClearance;
+
   if (vehicle.airborne) {
-    passable.fill(1);
+    // An aircraft is stopped by an obstacle only when the obstacle reaches its
+    // operating height. A 20 m building blocks a quadcopter cruising at 5 m and
+    // does not trouble one at 30 m. This is the whole difference between the
+    // two classes and it is why the same obstacle grid gives different answers
+    // per platform rather than one shared no-go map.
+    if (!obstacleHeight) {
+      passable.fill(1);
+      return passable;
+    }
+    for (let i = 0; i < passable.length; i++) {
+      passable[i] = obstacleHeight[i] + clearance <= vehicle.heightAboveGround ? 1 : 0;
+    }
     return passable;
   }
+
+  // A ground vehicle goes around anything standing on the surface, whatever
+  // its height, and around ground too steep to climb.
   for (let i = 0; i < passable.length; i++) {
-    passable[i] = slope[i] <= vehicle.maxSlopeDeg ? 1 : 0;
+    const slopeOk = slope[i] <= vehicle.maxSlopeDeg;
+    const clearGround = !obstacleHeight || obstacleHeight[i] <= 0;
+    passable[i] = slopeOk && clearGround ? 1 : 0;
   }
   return passable;
 }
@@ -227,4 +245,51 @@ export function computeUsable(dem, ceiling, passable, vehicle) {
     usable[i] = passable[i] === 1 && hidden ? 1 : 0;
   }
   return usable;
+}
+
+
+// Resolve the mission's vehicle input into the platforms to plan for.
+//
+// Accepts either a class - "ground" or "air" - or a specific platform id.
+// A class is usually what a planner actually knows ("we are sending a UGV"),
+// and it returns every platform in that class so the trade-off between them
+// stays visible rather than being decided silently.
+export class VehicleInputError extends Error {}
+
+export const VEHICLE_CLASSES = {
+  ground: ["porter", "ugvTracked", "ugvWheeled"],
+  air: ["quadNap", "quadLow", "quadFpv", "cargoQuad"],
+  all: ["porter", "ugvTracked", "ugvWheeled", "quadNap", "quadLow", "quadFpv", "cargoQuad"],
+};
+
+export function resolveVehicles(input) {
+  if (input === undefined || input === null || input === "") {
+    throw new VehicleInputError(
+      'mission.vehicle is required. Use "ground", "air", "all", or a platform id: ' +
+      Object.keys(VEHICLES).join(", ")
+    );
+  }
+
+  const key = String(input).toLowerCase().trim();
+
+  if (VEHICLE_CLASSES[key]) {
+    return {
+      label: key === "all" ? "every platform" : key + " vehicles",
+      isClass: true,
+      vehicles: VEHICLE_CLASSES[key].map((id) => VEHICLES[id]),
+    };
+  }
+
+  // Case-insensitive match on a specific platform id.
+  for (const id of Object.keys(VEHICLES)) {
+    if (id.toLowerCase() === key) {
+      return { label: VEHICLES[id].label, isClass: false, vehicles: [VEHICLES[id]] };
+    }
+  }
+
+  throw new VehicleInputError(
+    'mission.vehicle "' + input + '" is not recognised.\n' +
+    "  Classes: ground, air, all\n" +
+    "  Platforms: " + Object.keys(VEHICLES).join(", ")
+  );
 }

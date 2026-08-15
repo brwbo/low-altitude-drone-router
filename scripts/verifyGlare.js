@@ -2,7 +2,10 @@
 
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, exposureCount } from "../src/viewshed.js";
-import { computeGlare, weightedExposure, glareCoverage, isOptical } from "../src/glare.js";
+import {
+  computeGlare, computeGradedGlare, glareIntensity,
+  weightedExposure, glareCoverage, isOptical,
+} from "../src/glare.js";
 import { solarPosition } from "../src/sun.js";
 
 let failures = 0;
@@ -128,6 +131,51 @@ const cover = glareCoverage(dem, ceilings, glares, 15);
 check("glare coverage is a valid fraction",
   cover.fraction >= 0 && cover.fraction <= 1 && cover.helpedCells <= cover.exposedCells,
   pct(cover.fraction) + " of " + cover.exposedCells + " exposed cells");
+
+// Graded dazzle: strength must scale with how low the sun is, and taper off
+// the sun's bearing. A flat in-or-out flag treated a blinding 3 degree sun the
+// same as a mild 24 degree one; this is the fix, and these guard it.
+console.log("\n  graded dazzle scales with sun height and bearing");
+
+const lowSun = { azimuth: 90, elevation: 3 };
+const highSun = { azimuth: 90, elevation: 22 };
+check("a lower sun dazzles harder than a higher one",
+  glareIntensity(lowSun) > glareIntensity(highSun),
+  glareIntensity(lowSun).toFixed(2) + " vs " + glareIntensity(highSun).toFixed(2));
+check("glare intensity is zero once the sun is above the cutoff",
+  glareIntensity({ azimuth: 90, elevation: 30 }) === 0);
+check("glare intensity is zero below the horizon",
+  glareIntensity({ azimuth: 90, elevation: -2 }) === 0);
+
+const gradedLow = computeGradedGlare(dem, centre, lowSun);
+const gradedHigh = computeGradedGlare(dem, centre, highSun);
+let maxLow = 0;
+let maxHigh = 0;
+for (let i = 0; i < gradedLow.length; i++) {
+  if (gradedLow[i] > maxLow) maxLow = gradedLow[i];
+  if (gradedHigh[i] > maxHigh) maxHigh = gradedHigh[i];
+}
+check("graded glare never exceeds 1", maxLow <= 1 && maxHigh <= 1,
+  "peak " + maxLow.toFixed(2));
+check("a low sun produces stronger peak dazzle than a high one", maxLow > maxHigh,
+  maxLow.toFixed(2) + " vs " + maxHigh.toFixed(2));
+
+// A cell dead on the sun's bearing must be dazzled harder than one at the edge
+// of the wedge. Pick a cell due east of the threat (the sun's bearing) and one
+// angled well off it but still inside the 18 degree wedge.
+const onAxis = gradedLow[centre.y * dem.width + Math.min(dem.width - 1, centre.x + 40)];
+const offAxisY = Math.max(0, centre.y - 12);
+const offAxis = gradedLow[offAxisY * dem.width + Math.min(dem.width - 1, centre.x + 40)];
+check("dead-centre on the sun dazzles harder than the wedge edge",
+  onAxis > offAxis,
+  onAxis.toFixed(2) + " on axis vs " + offAxis.toFixed(2) + " off axis");
+
+const gradedThermal = computeGradedGlare(dem, { x: 667, y: 630, type: "thermal", mastHeight: 4 }, lowSun);
+let thermalPeak = 0;
+for (let i = 0; i < gradedThermal.length; i++) {
+  if (gradedThermal[i] > thermalPeak) thermalPeak = gradedThermal[i];
+}
+check("a thermal threat is never dazzled, even at graded strength", thermalPeak === 0);
 
 console.log("");
 if (failures > 0) {

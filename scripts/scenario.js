@@ -11,14 +11,14 @@ import { loadObstacleHeightsSync } from "../src/obstaclesNode.js";
 import { buildSurface } from "../src/obstacles.js";
 import { solarPosition, sunTimes } from "../src/sun.js";
 import { computeShadow } from "../src/shadow.js";
-import { computeGlare, weightedExposure, glareCoverage, isOptical } from "../src/glare.js";
+import { computeGradedGlare, weightedExposure, glareCoverage, isOptical } from "../src/glare.js";
 import { findPath } from "../src/pathfind.js";
 import { encodePng, hillshadeRgb, blend } from "../src/png.js";
 import { parseThreats, describeThreat, ThreatInputError } from "../src/threats.js";
 import { lonLatToGrid, insideBounds, describeBounds } from "../src/coords.js";
 import {
   VEHICLES, computeSlope, computeTrafficable, concealedFraction,
-  checkEndurance, describeEndurance,
+  checkEndurance, describeEndurance, resolveVehicles, VehicleInputError,
 } from "../src/vehicles.js";
 
 const missionFile = process.argv[2] || "data/threats.json";
@@ -85,6 +85,19 @@ function missionPoint(spec, name) {
     label: spec.label || name,
   };
 }
+// Which platform the route is for. A class shows the trade-off across that
+// class; a specific id plans for exactly one.
+let selection;
+try {
+  selection = resolveVehicles(mission.mission.vehicle);
+} catch (error) {
+  if (error instanceof VehicleInputError) {
+    console.error("\n" + error.message + "\n");
+    process.exit(1);
+  }
+  throw error;
+}
+
 const start = missionPoint(mission.mission.start, "start");
 const goal = missionPoint(mission.mission.goal, "goal");
 
@@ -93,6 +106,8 @@ console.log("\n=== CORRIDOR PLANNER ===");
 console.log("area    " + ((dem.width * dem.cellSize) / 1000).toFixed(1) + " x " +
   ((dem.height * dem.cellSize) / 1000).toFixed(1) + " km Carpathians at " + dem.cellSize + " m");
 console.log("mission " + start.label + " -> " + goal.label);
+console.log("planning for " + selection.label +
+  (selection.isClass ? " (" + selection.vehicles.length + " platforms)" : ""));
 console.log("time    " + when.toISOString());
 
 const sun = solarPosition(when, lat, lon);
@@ -137,7 +152,7 @@ function opticalShareAt(heightAboveGround) {
 // Where an observer at each threat would be looking into the sun. Optical
 // threats only - radar does not care what the sun is doing, and thermal can
 // invert.
-const glares = threats.map((threat) => computeGlare(dem, threat, sun));
+const glares = threats.map((threat) => computeGradedGlare(dem, threat, sun));
 const opticalCount = threats.filter(isOptical).length;
 
 // -------------------------------------------------- the altitude trade-off
@@ -158,12 +173,11 @@ console.log("\n--- route by platform ---");
 console.log("platform".padEnd(28) + "AGL".padStart(6) + "concealed".padStart(11) +
   "direct".padStart(10) + "planned".padStart(10) + "detour".padStart(8) + "endurance".padStart(17));
 
-const order = ["ugvTracked", "ugvWheeled", "quadNap", "quadLow", "quadFpv"];
 const notes = [];
 const rendered = {};
 
-for (const id of order) {
-  const vehicle = VEHICLES[id];
+for (const vehicle of selection.vehicles) {
+  const id = vehicle.id;
   const passable = computeTrafficable(dem, vehicle, slope);
   // Weighted, not counted: a dazzled optical observer counts for half.
   const exposure = weightedExposure(dem, ceilings, glares, vehicle.heightAboveGround,
@@ -212,7 +226,7 @@ for (const id of order) {
   if (!endurance.feasible) {
     notes.push(vehicle.label + ": " + describeEndurance(endurance));
   }
-  if (id === "quadLow" || id === "ugvTracked") {
+  if (rendered[id] === undefined && Object.keys(rendered).length < 2) {
     rendered[id] = { vehicle, passable, exposure, direct, planned };
   }
 }
@@ -233,7 +247,7 @@ if (notes.length > 0) {
 // than pick for you: a low sun gives the most shadow and the most glare, but
 // the shadow discount also tempts the router onto more exposed ground.
 console.log("\n--- departure window, measured on the route itself ---");
-const reference = VEHICLES.quadLow;
+const reference = selection.vehicles[selection.vehicles.length - 1];
 const referencePassable = computeTrafficable(dem, reference, slope);
 
 const options = [];
@@ -244,7 +258,7 @@ for (let minute = 180; minute <= 1110; minute += 30) {
     continue;
   }
   const shade = computeShadow(dem, s2);
-  const g = threats.map((t) => computeGlare(dem, t, s2));
+  const g = threats.map((t) => computeGradedGlare(dem, t, s2));
   const exposureNow = weightedExposure(dem, ceilings, g, reference.heightAboveGround,
     { glareDiscount: 0.5 });
   const r = findPath(dem, start, goal,
@@ -266,7 +280,7 @@ for (let minute = 180; minute <= 1110; minute += 30) {
     for (let c = 0; c < ceilings.length; c++) {
       if (dem.elev[index] + reference.heightAboveGround > ceilings[c][index]) {
         seen = seen + 1;
-        if (g[c][index] === 1) dazzled = dazzled + 1;
+        if (g[c][index] > 0) dazzled = dazzled + 1;
       }
     }
     if (seen > 0) {

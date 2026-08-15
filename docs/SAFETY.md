@@ -23,6 +23,8 @@ list of coordinates somebody typed in.
   horizon. This is trigonometry over a height grid. It is the same computation
   a game engine performs to decide where a shadow falls.
 - Computes terrain shadow from solar geometry for a given timestamp.
+- Takes the platform the route is for, as a class (ground or air) or a
+  specific vehicle.
 - Finds the least-cost route over ground the vehicle can actually cross
   (Dijkstra), weighing distance, climb and time spent in view of a threat.
 - Checks the route against the platform's endurance, including the climb.

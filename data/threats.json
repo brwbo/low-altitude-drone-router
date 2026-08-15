@@ -12,7 +12,8 @@
       "lat": 48.2655,
       "lon": 24.4251
     },
-    "timeUtc": "2026-08-15T04:30:00Z"
+    "timeUtc": "2026-08-15T04:30:00Z",
+    "vehicle": "air"
   },
   "threats": [
     {
@@ -46,5 +47,6 @@
     }
   ],
   "_missionNote": "12 km along a valley rather than across the ridges, and 229 m of straight-line climb. Chosen so the endurance check passes for a quadcopter: a 58 km diagonal across the whole box was geometrically fine and unflyable by every platform.",
-  "_startNote": "Start sits on 5 degree ground. An earlier version was 90 m away on a 30.3 degree slope, which the tracked UGV could not leave - and the old candidate-sampling router returned a 16.5 km route from it anyway, crossing 11 impassable cells and reporting the endurance as OK."
+  "_startNote": "Start sits on 5 degree ground. An earlier version was 90 m away on a 30.3 degree slope, which the tracked UGV could not leave - and the old candidate-sampling router returned a 16.5 km route from it anyway, crossing 11 impassable cells and reporting the endurance as OK.",
+  "_vehicleNote": "mission.vehicle takes a class (\"ground\", \"air\", \"all\") or a specific platform id (\"ugvTracked\", \"quadLow\", ...). A class plans for every platform in it so the trade-off stays visible. Ground vehicles go around obstacles of any height; aircraft are stopped only by obstacles that reach their operating altitude."
 }

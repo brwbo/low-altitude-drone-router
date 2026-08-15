@@ -50,6 +50,60 @@ function angularDifference(a, b) {
   return diff;
 }
 
+// How badly the sun dazzles, from 0 to 1, as a function of how low it sits.
+//
+// A binary in-the-wedge / out-of-the-wedge flag treats a sun at 3 degrees -
+// sitting squarely in the observer's eyeline and genuinely blinding - the same
+// as one at 24 degrees, which is a mild squint. Dazzle is strongest when the
+// sun is lowest, fading to nothing by the elevation above which it is no longer
+// in the line of sight to a low-flying vehicle. Below the horizon it is zero.
+export function glareIntensity(sun, options) {
+  const opts = options || {};
+  const maxSunElevation = opts.maxSunElevationDeg === undefined ? 25 : opts.maxSunElevationDeg;
+  if (sun.elevation <= 0 || sun.elevation > maxSunElevation) {
+    return 0;
+  }
+  return (maxSunElevation - sun.elevation) / maxSunElevation;
+}
+
+// Graded dazzle per cell, 0 to 1, combining two falloffs: how low the sun is,
+// and how close the bearing to the vehicle is to the sun's bearing. Dead centre
+// on the sun at a hair above the horizon is 1; the edge of the wedge, or a sun
+// near the cutoff, tapers to 0. This is the version the router should use, so a
+// route is drawn towards the strongest dazzle rather than treating the whole
+// wedge as equally good. computeGlare below stays binary for callers and tests
+// that only need wedge membership.
+export function computeGradedGlare(dem, threat, sun, options) {
+  const opts = options || {};
+  const halfAngle = opts.halfAngleDeg === undefined ? 18 : opts.halfAngleDeg;
+
+  const graded = new Float32Array(dem.width * dem.height);
+  if (!isOptical(threat)) {
+    return graded;
+  }
+  const intensity = glareIntensity(sun, opts);
+  if (intensity <= 0) {
+    return graded;
+  }
+
+  for (let y = 0; y < dem.height; y++) {
+    for (let x = 0; x < dem.width; x++) {
+      if (x === threat.x && y === threat.y) {
+        continue;
+      }
+      const bearing = bearingFromTo(threat.x, threat.y, x, y);
+      const offAxis = angularDifference(bearing, sun.azimuth);
+      if (offAxis <= halfAngle) {
+        // Linear taper: full dazzle on the sun's bearing, zero at the edge.
+        const angularFactor = 1 - offAxis / halfAngle;
+        graded[y * dem.width + x] = angularFactor * intensity;
+      }
+    }
+  }
+
+  return graded;
+}
+
 // Cells where an observer at this threat would be looking into the sun.
 // Returns Uint8Array, 1 = dazzled.
 export function computeGlare(dem, threat, sun, options) {
@@ -103,7 +157,13 @@ export function weightedExposure(dem, ceilings, glares, heightAboveGround, optio
     const glare = glares[c];
     for (let i = 0; i < cellCount; i++) {
       if (dem.elev[i] + heightAboveGround > ceiling[i]) {
-        weight[i] = weight[i] + (glare && glare[i] === 1 ? 1 - discount : 1);
+        // The glare value is read as a 0..1 dazzle factor. A binary grid of
+        // 0/1 still behaves exactly as before (1 gives the full discount, 0
+        // none); a graded grid discounts in proportion to how dazzled the
+        // observer is. The discount can never exceed the clamp, so a weighted
+        // count can never drop below zero or exceed the plain count.
+        const dazzle = glare ? glare[i] : 0;
+        weight[i] = weight[i] + (1 - discount * dazzle);
       }
     }
   }
@@ -124,7 +184,9 @@ export function glareCoverage(dem, ceilings, glares, heightAboveGround) {
     for (let c = 0; c < ceilings.length; c++) {
       if (dem.elev[i] + heightAboveGround > ceilings[c][i]) {
         seenBy = seenBy + 1;
-        if (glares[c] && glares[c][i] === 1) {
+        // Any non-zero dazzle counts as a helped cell, so this works for both
+        // the binary and the graded glare grids.
+        if (glares[c] && glares[c][i] > 0) {
           dazzled = dazzled + 1;
         }
       }
