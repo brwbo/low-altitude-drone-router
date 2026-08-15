@@ -18,8 +18,8 @@ export function timeToHour(t) {
   return (h || 0) + (m || 0) / 60;
 }
 
-// v2: bumped so any Nikopol-era mission saved in localStorage is ignored.
-const KEY = "umbra.mission.v2";
+// v7: urban mission with open-ground start/goal.
+const KEY = "umbra.mission.v8";
 
 export function saveMission(m) {
   try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (e) {}

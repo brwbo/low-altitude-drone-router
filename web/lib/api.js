@@ -5,11 +5,14 @@ export const CONFIG = {
   DEMO_DATE: "2026-08-15",
   // Carpathians around Hoverla — matches the routing engine's DEM bounds.
   BBOX: [48.000139, 24.230417, 48.339861, 24.769306], // [minLat,minLon,maxLat,maxLon]
-  CENTER: [48.17, 24.50],
+  // A short, urban drone/UGV mission in a built-up area, so buildings do the
+  // concealing. Start and goal are open ground either side of the town; the
+  // buildings sharply limit how far the threats can actually see.
+  CENTER: [48.2534, 24.4478],
   PRESETS: {
-    start: [48.1596, 24.4599],   // forward logistics point
-    goal: [48.2655, 24.4251],    // resupply drop
-    enemies: [[48.1604, 24.4995], [48.1507, 24.3661], [48.1831, 24.6352]],
+    start: [48.2515, 24.4482],   // open ground, south
+    goal: [48.2553, 24.4473],    // objective ~430 m N, through the streets
+    enemies: [[48.2537, 24.4506], [48.2537, 24.4457]],  // flanking the corridor
   },
   buildDatetime(date, hour) {
     const h = Math.floor(hour), m = Math.round((hour - h) * 60);
