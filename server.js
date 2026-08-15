@@ -8,12 +8,12 @@
 
 import http from "node:http";
 import { loadDemSync } from "./src/demNode.js";
-import { computeCeiling, exposureCount } from "./src/viewshed.js";
+import { computeCeiling } from "./src/viewshed.js";
 import { loadObstacleHeightsSync } from "./src/obstaclesNode.js";
 import { buildSurface } from "./src/obstacles.js";
 import { solarPosition } from "./src/sun.js";
 import { computeShadow } from "./src/shadow.js";
-import { computeGradedGlare, weightedExposure, isOptical } from "./src/glare.js";
+import { computeGradedGlare, weightedExposure } from "./src/glare.js";
 import { findPath } from "./src/pathfind.js";
 import { parseThreats } from "./src/threats.js";
 import { lonLatToGrid, gridToLonLat, insideBounds, describeBounds } from "./src/coords.js";
@@ -66,43 +66,28 @@ function plan(body) {
     // over Carpathian ridgelines a 20 km range let three threats see nearly the
     // whole map, so the "threat visibility" heat covered everything regardless
     // of where the threats sat. A realistic range keeps it local to each one.
-    .map((e, i) => ({ label: "threat " + (i + 1), type: "optical", lat: e[0], lon: e[1],
+    .map((e, i) => ({ label: "threat " + (i + 1), lat: e[0], lon: e[1],
       mastHeight: e[2] ?? 2, maxRangeKm: e[3] ?? 2.5 }));
   const threats = parseThreats(raw, dem);
 
   const sun = solarPosition(when, lat0, lon0);
   const shadowResult = computeShadow(surfaceDem, sun); // buildings cast shadows too
 
-  const ceilings = [], opticalCeilings = [];
-  for (const t of threats) {
-    const c = computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres, surface });
-    ceilings.push(c);
-    if (isOptical(t)) opticalCeilings.push(c);
-  }
+  const ceilings = threats.map((t) =>
+    computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres, surface }));
   const glares = threats.map((t) => computeGradedGlare(dem, t, sun));
   const exposure = weightedExposure(dem, ceilings, glares, AGL, { glareDiscount: 0.5 });
 
-  const opticalShare = new Float32Array(cellCount);
-  if (threats.length) {
-    const all = exposureCount(dem, ceilings, AGL);
-    const opt = exposureCount(dem, opticalCeilings, AGL);
-    for (let i = 0; i < cellCount; i++) opticalShare[i] = all[i] > 0 ? opt[i] / all[i] : 0;
-  }
-
-  // Darkness blinds optical sensors. An eye or camera sees little below the
-  // horizon and everything by full day; thermal and radar are unaffected, so
-  // only the OPTICAL share of each cell's exposure fades at night. Moving in
-  // the dark is the most basic concealment there is, and this is what makes the
-  // time of day genuinely change the route rather than nudge it. The daylight
-  // factor runs from 0.12 in the dark (civil twilight begins near -6 deg) to 1
-  // once the sun is a comfortable 10 deg up.
+  // Darkness blinds the sensors. They see little below the horizon and
+  // everything by full day; moving in the dark is the most basic concealment
+  // there is, and it is what makes the time of day genuinely change the route.
+  // The daylight factor runs from 0.12 in the dark (civil twilight begins near
+  // -6 deg) to 1 once the sun is a comfortable 10 deg up.
   const daylight = Math.max(0.12, Math.min(1, (sun.elevation + 6) / 16));
   const effExposure = new Float32Array(cellCount);
-  for (let i = 0; i < cellCount; i++) {
-    effExposure[i] = exposure[i] * (1 - opticalShare[i] * (1 - daylight));
-  }
+  for (let i = 0; i < cellCount; i++) effExposure[i] = exposure[i] * daylight;
 
-  const grids = { passable, exposure: effExposure, opticalShare, shadow: shadowResult.shadow, elev: dem.elev };
+  const grids = { passable, exposure: effExposure, shadow: shadowResult.shadow, elev: dem.elev };
   const planned = findPath(dem, cell(sLat, sLon), cell(gLat, gLon), grids,
     { vehicle, exposurePenalty: EXPOSURE_PENALTY, shadowDiscount: 0.65 });
   if (!planned.found) return { error: planned.reason || "no route found" };
