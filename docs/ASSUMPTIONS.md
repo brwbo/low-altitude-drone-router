@@ -7,7 +7,7 @@ A one-page reference for questions about how the numbers are produced.
 | Input | Source | Note |
 |---|---|---|
 | Elevation | Copernicus DEM GLO-30 | Real 30 m global terrain, open licence |
-| Buildings & trees | Prepared obstacle surface | Included in the masking surface, not just bare ground |
+| Buildings & trees | OpenStreetMap, rasterised offline (7.7% of demo map) | In the masking surface today, not just bare ground. Heights are OSM values where present, else class defaults — planning inputs, not survey data |
 | Sun position | Computed solar azimuth + elevation | Real astronomy for the given date, time and location |
 | Threat positions | Operator input | Nothing is detected or inferred — a human marks them |
 
@@ -53,10 +53,13 @@ cannot traverse, and endurance is checked against the result.
    from the operator's marked threat positions, mast heights and ranges. Move
    the threats and the seconds move; the size of the saving holds.
 
-4. **Sensor type matters and we model it.** Terrain masking works against
-   *every* sensor — radio, radar and optical alike, because a shot needs line of
-   sight. The **sun layer applies to optical sensors only**; we do not claim
-   shadow defeats radar or EW.
+4. **Terrain masking works against every sensor; the sun layer is an optical
+   effect.** A shot needs line of sight, so breaking it defeats radio, radar and
+   optical alike. Shadow and glare degrade eyes and cameras only — we do not
+   claim they defeat radar or EW. **In the current build every marked threat is
+   treated as one uniform optical sensor**, so a mixed radar/optical threat
+   picture is a modelling refinement still to come, not something we claim
+   today.
 
 5. **The sun changes the route for platforms terrain cannot already hide.** A
    nap-of-the-earth drone is so well concealed by ground that light makes no
