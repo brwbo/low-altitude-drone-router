@@ -5,14 +5,24 @@ export const CONFIG = {
   DEMO_DATE: "2026-08-15",
   // Carpathians around Hoverla — matches the routing engine's DEM bounds.
   BBOX: [48.000139, 24.230417, 48.339861, 24.769306], // [minLat,minLon,maxLat,maxLon]
-  // A short, urban drone/UGV mission in a built-up area, so buildings do the
-  // concealing. Start and goal are open ground either side of the town; the
-  // buildings sharply limit how far the threats can actually see.
-  CENTER: [48.2534, 24.4478],
+  // A 12 km valley run with five sensors ringing the corridor. Threat ranges
+  // are short (2-3 km), so they have to sit ON the route to see anything -
+  // spread them wider and exposure drops to zero for both routes, which shows
+  // no trade-off at all. Tuned so the direct line is heavily seen (472 s) but
+  // the planned route still carries residual risk (40 s): a 92% cut for 4%
+  // more distance. Not 100%, because perfect concealment reads as a bug.
+  CENTER: [48.2100, 24.4430],
   PRESETS: {
-    start: [48.2515, 24.4482],   // open ground, south
-    goal: [48.2553, 24.4473],    // objective ~430 m N, through the streets
-    enemies: [[48.2537, 24.4506], [48.2537, 24.4457]],  // flanking the corridor
+    start: [48.1596, 24.4599],   // forward logistics point
+    goal: [48.2655, 24.4251],    // objective, 12 km north up the valley
+    // [lat, lon, mastHeight m, rangeKm]
+    enemies: [
+      [48.2100, 24.4380, 12, 3],
+      [48.1850, 24.4480, 12, 3],
+      [48.2350, 24.4320, 12, 3],
+      [48.2600, 24.4300, 12, 3],
+      [48.1700, 24.4550, 12, 3],
+    ],
   },
   buildDatetime(date, hour) {
     const h = Math.floor(hour), m = Math.round((hour - h) * 60);

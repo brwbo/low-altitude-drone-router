@@ -63,6 +63,18 @@ function sampleExposure(exp, lat, lon) {
   return exp.grid[r]?.[c] ?? 0;
 }
 
+// Pick an opening zoom that fits the mission, so the same UI works for a 400 m
+// urban run and a 12 km valley corridor. fitBounds is unsafe here (container is
+// zero-sized at mount), so derive the level from the span instead.
+function zoomForSpan(pts) {
+  const lats = pts.map((p) => p[0]), lons = pts.map((p) => p[1]);
+  const dLat = Math.max(...lats) - Math.min(...lats);
+  const dLon = (Math.max(...lons) - Math.min(...lons)) * 0.67; // lon shrinks at 48N
+  const span = Math.max(dLat, dLon, 0.0008);                   // degrees
+  const z = Math.log2(360 / span) - 0.9;                       // fit with margin
+  return Math.max(9, Math.min(16, Math.round(z * 4) / 4));
+}
+
 export default function MapView() {
   const [vehicle, setVehicle] = useState("quadLow");
   const [mode, setMode] = useState("morning");
@@ -312,6 +324,7 @@ export default function MapView() {
 
   function makeEnemy(pos) {
     const L = LRef.current, map = mapRef.current;
+    pos = [pos[0], pos[1]];   // presets may carry [lat, lon, mastM, rangeKm]
     const icon = L.divIcon({ className: "pin", html: `<div class="pin-enemy"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] });
     const m = L.marker(pos, { draggable: true, icon })
       .addTo(map).bindTooltip("Threat · click to remove", { direction: "top", className: "tt" });
@@ -342,7 +355,7 @@ export default function MapView() {
       const map = L.map(containerRef.current, {
         zoomControl: false, scrollWheelZoom: true,
         zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 140, wheelDebounceTime: 40, inertia: true,
-      }).setView([cLat, cLon], 16);
+      }).setView([cLat, cLon], zoomForSpan(opsPts));
       mapRef.current = map;
       L.control.zoom({ position: "bottomright" }).addTo(map);
       // Light basemap: the threat-visibility heat and the route must read at a
@@ -475,7 +488,7 @@ export default function MapView() {
           </div>
           <div className="field">
             <span className="glabel">Time of day <b>{hourLabel}</b></span>
-            <input type="range" min="0" max="23.5" step="0.5" value={hour}
+            <input type="range" min="5" max="19" step="0.5" value={hour}
               disabled={mode === "compare"} onChange={(e) => setHour(parseFloat(e.target.value))} />
           </div>
         </div>
