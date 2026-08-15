@@ -20,7 +20,20 @@ function check(label, passed, detail) {
 const dem = loadDemSync();
 const cellCount = dem.width * dem.height;
 const mission = JSON.parse(fs.readFileSync("data/threats.json", "utf8"));
-const threats = parseThreats(mission.threats, dem);
+
+// The corridor controls place their OWN threats rather than using the shipped
+// mission. A test that depends on demo tuning fails whenever the demo is
+// retuned, which is exactly what happened when sensor ranges were corrected
+// from an invented 20-30 km to a sourced 2-4 km: the shipped route stopped
+// being seen at all, and "planning reduces exposure" failed on 0 s vs 0 s.
+// That was the scenario changing, not the router breaking.
+//
+// These sit directly over the corridor with generous range, so there is
+// always real exposure to reduce.
+const threats = parseThreats([
+  { label: "overwatch A", type: "optical", lat: 48.1900, lon: 24.4450, mastHeight: 10, maxRangeKm: 12 },
+  { label: "overwatch B", type: "radar", lat: 48.2300, lon: 24.4300, mastHeight: 10, maxRangeKm: 12 },
+], dem);
 const ceilings = threats.map((t) =>
   computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres })
 );

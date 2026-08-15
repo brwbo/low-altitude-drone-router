@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, combineCeilings, exposureCount } from "../src/viewshed.js";
-import { hiddenFraction } from "../src/corridor.js";
+import { hiddenFraction, computeSensorReach, reachFraction, hiddenWithinReach } from "../src/corridor.js";
 import { loadObstacleHeightsSync } from "../src/obstaclesNode.js";
 import { buildSurface } from "../src/obstacles.js";
 import { solarPosition, sunTimes } from "../src/sun.js";
@@ -158,10 +158,14 @@ const opticalCount = threats.filter(isOptical).length;
 // -------------------------------------------------- the altitude trade-off
 // The single most important output. Cover does not degrade gently with
 // height; it falls away, and this is the curve that shows it.
+const reach = computeSensorReach(dem, threats);
 console.log("\n--- how much cover you lose by climbing ---");
+console.log("  measured over ground a sensor can actually reach (" +
+  pct(reachFraction(reach)) + " of the map). Over the WHOLE map the figure is");
+console.log("  near 98% at every altitude, because most of it is simply out of range.");
 let previousHidden = null;
 for (const agl of [5, 15, 30, 50, 80, 120, 200]) {
-  const hidden = hiddenFraction(dem, ceiling, agl);
+  const hidden = hiddenWithinReach(dem, ceiling, reach, agl);
   const delta = previousHidden === null ? "" : ((hidden - previousHidden) * 100).toFixed(1) + " pts";
   console.log("  " + (agl + " m AGL").padStart(9) + "  " + pct(hidden).padStart(6) +
     "  " + delta.padStart(9) + "  " + "#".repeat(Math.round(hidden * 45)));
@@ -215,7 +219,7 @@ for (const vehicle of selection.vehicles) {
   console.log(
     vehicle.label.padEnd(28) +
     (vehicle.heightAboveGround + " m").padStart(6) +
-    pct(concealedFraction(dem, ceiling, vehicle)).padStart(11) +
+    pct(hiddenWithinReach(dem, ceiling, reach, vehicle.heightAboveGround)).padStart(11) +
     (direct.exposedSeconds.toFixed(0) + "s").padStart(10) +
     (planned.exposedSeconds.toFixed(0) + "s").padStart(10) +
     (planned.longestExposedRun.toFixed(0) + "s").padStart(9) +

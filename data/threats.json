@@ -1,6 +1,6 @@
 {
   "_comment": "Enemy sensor positions are ALWAYS operator input. Nothing in this codebase detects, identifies or locates anything - it computes geometry from coordinates a human entered. Positions must fall inside the loaded map: lat 48.0001 to 48.3399, lon 24.2304 to 24.7693.",
-  "_placementNote": "Threats on commanding ground dominate the result. These three sit on the highest points within 6 km of the route (2052 m, 1720 m, 1583 m). Put a sensor in a valley and it sees almost nothing, which is correct but makes for a demo that shows no red at all.",
+  "_placementNote": "Threats sit 2.4-2.5 km from the corridor, on the highest ground overwatching it. CORRECTED 2026-08-15 together with the ranges. The earlier positions were 5-10 km away on distant peaks and only threatened the route because the ranges were inflated to 20-30 km. With sourced 2-4 km ranges those threats saw nothing at all: 98.1% of the map concealed, zero exposure on every route, and a flat altitude curve. A sensor tasked with watching a corridor is sited to overwatch it, so realistic ranges require realistic placement - changing one without the other produces a demo that is honest and empty.",
   "mission": {
     "start": {
       "label": "forward logistics point",
@@ -17,36 +17,59 @@
   },
   "threats": [
     {
-      "label": "Hoverla summit observation post",
+      "label": "west shoulder observation post",
       "type": "optical",
-      "lat": 48.1604,
-      "lon": 24.4995,
+      "lat": 48.1728,
+      "lon": 24.4227,
       "mastHeight": 4,
-      "maxRangeKm": 20,
-      "confidence": "stated",
-      "source": "operator input"
-    },
-    {
-      "label": "west ridge EW mast",
-      "type": "ew",
-      "lat": 48.1507,
-      "lon": 24.3661,
-      "mastHeight": 18,
-      "maxRangeKm": 30,
-      "confidence": "stated",
-      "source": "operator input"
-    },
-    {
-      "label": "east spur radar",
-      "type": "radar",
-      "position": "48.1831, 24.6352",
-      "mastHeight": 12,
-      "maxRangeKm": 25,
+      "maxRangeKm": 2,
       "confidence": "medium",
-      "source": "operator input"
+      "source": "operator input",
+      "_previousRangeKm": 20,
+      "rangeSource": "NATO STO MSG-SET-183 (as of 2025-11, sto.nato.int): purpose-built optical systems detect DJI-class drones in excess of 1.5 km in daylight, classification ~1 km with a 30x PTZ camera. An unaided observer performs worse. 2 km is generous for a human with optics.",
+      "_previousPosition": {
+        "lat": 48.1604,
+        "lon": 24.4995,
+        "position": null
+      }
+    },
+    {
+      "label": "east spur EW mast",
+      "type": "ew",
+      "lat": 48.1621,
+      "lon": 24.4922,
+      "mastHeight": 18,
+      "maxRangeKm": 4,
+      "confidence": "medium",
+      "source": "operator input",
+      "_previousRangeKm": 30,
+      "rangeSource": "United24 (as of 2026-02, united24media.com): fielded Ukrainian RF drone-detection system with a ~4 km detection range.",
+      "_previousPosition": {
+        "lat": 48.1507,
+        "lon": 24.3661,
+        "position": null
+      }
+    },
+    {
+      "label": "south knoll radar",
+      "type": "radar",
+      "mastHeight": 12,
+      "maxRangeKm": 4,
+      "confidence": "medium",
+      "source": "operator input",
+      "_previousRangeKm": 25,
+      "rangeSource": "Australian Army Occasional Paper 29 (as of 2024-10, researchcentre.army.gov.au): Mavic-class quadcopters are detected by target-detection radar at only 3-4 km.",
+      "_previousPosition": {
+        "lat": null,
+        "lon": null,
+        "position": "48.1831, 24.6352"
+      },
+      "lat": 48.1383,
+      "lon": 24.455
     }
   ],
   "_missionNote": "12 km along a valley rather than across the ridges, and 229 m of straight-line climb. Chosen so the endurance check passes for a quadcopter: a 58 km diagonal across the whole box was geometrically fine and unflyable by every platform.",
   "_startNote": "Start sits on 5 degree ground. An earlier version was 90 m away on a 30.3 degree slope, which the tracked UGV could not leave - and the old candidate-sampling router returned a 16.5 km route from it anyway, crossing 11 impassable cells and reporting the endurance as OK.",
-  "_vehicleNote": "mission.vehicle takes a class (\"ground\", \"air\", \"all\") or a specific platform id (\"ugvTracked\", \"quadLow\", ...). A class plans for every platform in it so the trade-off stays visible. Ground vehicles go around obstacles of any height; aircraft are stopped only by obstacles that reach their operating altitude."
+  "_vehicleNote": "mission.vehicle takes a class (\"ground\", \"air\", \"all\") or a specific platform id (\"ugvTracked\", \"quadLow\", ...). A class plans for every platform in it so the trade-off stays visible. Ground vehicles go around obstacles of any height; aircraft are stopped only by obstacles that reach their operating altitude.",
+  "_rangeNote": "SENSOR RANGES ARE SOURCED, NOT INVENTED (corrected 2026-08-15). An earlier version used 20-30 km, which is roughly ten times what open sources support against a small drone. Every value below now carries its source in rangeSource. Important caveat: there is NO published dataset for UNAIDED human detection ranges in this terrain - 'a soldier detects a tank at X km' is not documented in accessible sources. All figures below are SENSOR performance benchmarks used as proxies, and should be cited as such rather than as what a person can see. Full dossier: Research/Web/2026-08-15 - realistic visual detection range line of sight for a soldier observer spotting d.md"
 }

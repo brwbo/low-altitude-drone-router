@@ -61,7 +61,7 @@ export default function PlanPage() {
         </div>
         <div className="plan-sec">
           <span className="glabel">Area of operations</span>
-          <input type="text" value={m.area} onChange={(e) => setM({ ...m, area: e.target.value })} />
+          <div className="areafixed">{m.area} <em>— fixed to the loaded elevation map; place points inside it</em></div>
         </div>
 
         <div className="plan-two">
