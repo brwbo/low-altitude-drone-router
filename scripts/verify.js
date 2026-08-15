@@ -178,6 +178,41 @@ check(
   (flat.usableSeconds / 60).toFixed(0) + " min usable of " + quad.enduranceMinutes + " min total"
 );
 
+// ---------------------------------------------------------------- step 7
+console.log("\nSTEP 7  Mast height only helps a sensor that can clear its own skyline");
+
+const { sweepMastHeight } = await import("../src/sensitivity.js");
+
+// Raising a mast buys visibility only where the extra height clears the local
+// crest. On a summit the first few metres do that and buy a great deal. On a
+// valley floor enclosed by 1000 m of terrain, no realistic mast helps at all.
+// Asserting only "higher sees more" would pass on almost any implementation;
+// requiring the summit to be far more mast-sensitive than the valley tests the
+// mechanism rather than the direction.
+const mastHeights = [0, 5, 20, 60];
+const summitThreat = { x: summit.x, y: summit.y, maxRangeMetres: 30000 };
+const valleyThreat = { x: valley.x, y: valley.y, maxRangeMetres: 30000 };
+
+const summitSweep = sweepMastHeight(dem, [summitThreat], quad, mastHeights);
+const valleySweep = sweepMastHeight(dem, [valleyThreat], quad, mastHeights);
+const summitLoss = summitSweep[0].concealed - summitSweep[summitSweep.length - 1].concealed;
+const valleyLoss = valleySweep[0].concealed - valleySweep[valleySweep.length - 1].concealed;
+
+console.log("  summit threat, 0 to 60 m of mast: " + pct(summitLoss) + " of cover lost");
+console.log("  valley threat, 0 to 60 m of mast: " + pct(valleyLoss) + " of cover lost");
+check("raising a mast never increases cover", summitLoss >= 0 && valleyLoss >= 0);
+check(
+  "a summit sensor gains far more from a mast than an enclosed one",
+  summitLoss > valleyLoss * 10,
+  pct(summitLoss) + " vs " + pct(valleyLoss)
+);
+
+// The gain is front-loaded: the first 5 m must beat the following 55 m.
+const firstFive = summitSweep[0].concealed - summitSweep[1].concealed;
+const remaining = summitSweep[1].concealed - summitSweep[summitSweep.length - 1].concealed;
+console.log("  first 5 m: " + pct(firstFive) + "   next 55 m: " + pct(remaining));
+check("mast benefit is front-loaded", firstFive > remaining, pct(firstFive) + " vs " + pct(remaining));
+
 console.log("");
 if (failures > 0) {
   console.log(failures + " CHECK(S) FAILED - do not build on this");
