@@ -1,0 +1,61 @@
+{
+  "_comment": "Last-mile delivery scenario. THERE IS NO ROAD NETWORK IN THIS MODEL - every route is cross-country. That makes it wrong for ordinary logistics and right for the case it is built for: roads cut, bridges down, and a hub that can no longer reach the settlements it serves by the usual means.",
+  "_demandNote": "demandKg is what each settlement needs delivered in one cycle. Populations and demands here are illustrative, not survey data.",
+  "hub": {
+    "label": "distribution hub",
+    "lat": 48.0769,
+    "lon": 24.3354
+  },
+  "fleet": [
+    "porter",
+    "ugvTracked",
+    "ugvWheeled",
+    "cargoQuad",
+    "quadLow"
+  ],
+  "settlements": [
+    {
+      "label": "Verkhnii",
+      "lat": 48.1022,
+      "lon": 24.3904,
+      "population": 340,
+      "demandKg": 600
+    },
+    {
+      "label": "Dolyna",
+      "lat": 48.0546,
+      "lon": 24.3993,
+      "population": 180,
+      "demandKg": 320
+    },
+    {
+      "label": "Zelena",
+      "lat": 48.0117,
+      "lon": 24.3431,
+      "population": 95,
+      "demandKg": 170
+    },
+    {
+      "label": "Bystrytsia",
+      "lat": 48.068,
+      "lon": 24.2781,
+      "population": 210,
+      "demandKg": 380
+    },
+    {
+      "label": "Kryvorivnia",
+      "lat": 48.1122,
+      "lon": 24.2369,
+      "population": 130,
+      "demandKg": 230
+    },
+    {
+      "label": "Yablunytsia",
+      "lat": 48.172,
+      "lon": 24.3718,
+      "population": 260,
+      "demandKg": 470
+    }
+  ],
+  "_scaleNote": "Settlements sit 4 to 11 km from the hub, which is what last-mile actually means. An earlier version placed them 12 to 30 km out and every platform failed on endurance: correct arithmetic, useless plan. If real settlements are that far out, the finding is that the hub is in the wrong place."
+}

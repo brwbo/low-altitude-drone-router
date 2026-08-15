@@ -39,6 +39,8 @@ function scorePath(dem, points, grids, options) {
   let descentMetres = 0;
   let cost = 0;
   let climbReference = null;
+  let startElevation = null;
+  let highestElevation = -Infinity;
   const trace = [];
 
   for (let leg = 0; leg < points.length - 1; leg++) {
@@ -84,16 +86,30 @@ function scorePath(dem, points, grids, options) {
       // depend on the ruler. Only a sustained rise past ASCENT_THRESHOLD is
       // real climbing.
       const here = grids.elev[index];
-      if (climbReference === null) {
-        climbReference = here;
-      } else if (here > climbReference + ASCENT_THRESHOLD) {
-        const rise = here - climbReference;
-        ascentMetres = ascentMetres + rise;
-        cost = cost + rise * options.climbPenalty;
-        climbReference = here;
-      } else if (here < climbReference - ASCENT_THRESHOLD) {
-        descentMetres = descentMetres + (climbReference - here);
-        climbReference = here;
+      if (startElevation === null) {
+        startElevation = here;
+      }
+      if (here > highestElevation) {
+        highestElevation = here;
+      }
+
+      // AIRCRAFT DO NOT CLIMB THE TERRAIN. A rotary aircraft climbs once to a
+      // cruise altitude and holds it; charging it a rise and fall for every
+      // undulation below produced ascent figures several times the real
+      // number and reported every flight as infeasible. Ground vehicles do
+      // follow the surface, so they are charged per sustained rise.
+      if (!options.airborne) {
+        if (climbReference === null) {
+          climbReference = here;
+        } else if (here > climbReference + ASCENT_THRESHOLD) {
+          const rise = here - climbReference;
+          ascentMetres = ascentMetres + rise;
+          cost = cost + rise * options.climbPenalty;
+          climbReference = here;
+        } else if (here < climbReference - ASCENT_THRESHOLD) {
+          descentMetres = descentMetres + (climbReference - here);
+          climbReference = here;
+        }
       }
 
       const seenBy = grids.exposure[index];
@@ -109,6 +125,14 @@ function scorePath(dem, points, grids, options) {
 
       cost = cost + segmentMetres;
     }
+  }
+
+  // One climb from the start to the highest ground crossed, plus terrain
+  // clearance. That is what an aircraft actually spends.
+  if (options.airborne && startElevation !== null) {
+    ascentMetres = Math.max(0, highestElevation - startElevation);
+    descentMetres = ascentMetres;
+    cost = cost + ascentMetres * options.climbPenalty;
   }
 
   return {
@@ -170,6 +194,7 @@ export function planRoute(dem, start, goal, grids, options) {
           : 12,
     climbPenalty:
       opts.climbPenalty !== undefined ? opts.climbPenalty : vehicle ? vehicle.climbPenalty : 3,
+    airborne: vehicle ? vehicle.airborne === true : false,
     exposurePenalty: opts.exposurePenalty === undefined ? 3000 : opts.exposurePenalty,
     shadowBonus: opts.shadowBonus === undefined ? 40 : opts.shadowBonus,
     blockedPenalty: opts.blockedPenalty === undefined ? 20000 : opts.blockedPenalty,

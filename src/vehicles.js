@@ -31,6 +31,7 @@ export const VEHICLES = {
     climbPenalty: 6,
     enduranceMinutes: 240,
     reserveFraction: 0.2,
+    payloadKg: 300,
     climbSecondsPerMetre: 2.0,
   },
   ugvWheeled: {
@@ -43,6 +44,7 @@ export const VEHICLES = {
     climbPenalty: 8,
     enduranceMinutes: 180,
     reserveFraction: 0.2,
+    payloadKg: 150,
     climbSecondsPerMetre: 2.5,
   },
   quadNap: {
@@ -55,6 +57,7 @@ export const VEHICLES = {
     climbPenalty: 3,
     enduranceMinutes: 35,
     reserveFraction: 0.25,
+    payloadKg: 5,
     climbSecondsPerMetre: 0.6,
   },
   quadLow: {
@@ -67,6 +70,7 @@ export const VEHICLES = {
     climbPenalty: 3,
     enduranceMinutes: 40,
     reserveFraction: 0.25,
+    payloadKg: 5,
     climbSecondsPerMetre: 0.5,
   },
   quadFpv: {
@@ -79,7 +83,34 @@ export const VEHICLES = {
     climbPenalty: 2,
     enduranceMinutes: 15,
     reserveFraction: 0.25,
+    payloadKg: 2,
     climbSecondsPerMetre: 0.4,
+  },
+  porter: {
+    id: "porter",
+    label: "Porter on foot",
+    airborne: false,
+    heightAboveGround: 1.7,
+    maxSlopeDeg: 35,
+    speed: 1.1,
+    climbPenalty: 10,
+    enduranceMinutes: 480,
+    reserveFraction: 0.15,
+    payloadKg: 20,
+    climbSecondsPerMetre: 8.0,
+  },
+  cargoQuad: {
+    id: "cargoQuad",
+    label: "Cargo quadcopter",
+    airborne: true,
+    heightAboveGround: 60,
+    maxSlopeDeg: Infinity,
+    speed: 14,
+    climbPenalty: 4,
+    enduranceMinutes: 30,
+    reserveFraction: 0.25,
+    payloadKg: 25,
+    climbSecondsPerMetre: 0.8,
   },
 };
 
