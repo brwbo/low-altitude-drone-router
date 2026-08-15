@@ -76,7 +76,11 @@ function zoomForSpan(pts) {
 }
 
 export default function MapView() {
-  const [vehicle, setVehicle] = useState("quadLow");
+  // Cargo quad by default: it cruises high enough that terrain alone cannot
+  // hide it, which is what leaves the sun room to change the route. A
+  // nap-of-the-earth platform is already so well hidden by ground that the
+  // light makes no difference to where it flies.
+  const [vehicle, setVehicle] = useState("cargoQuad");
   const [mode, setMode] = useState("morning");
   const [hour, setHour] = useState(6.5);
   const [date, setDate] = useState(CONFIG.DEMO_DATE);
@@ -466,6 +470,7 @@ export default function MapView() {
         <div>
           <span className="glabel">Platform</span>
           <div className="seg">
+            <button data-on={vehicle === "cargoQuad"} onClick={() => setVehicle("cargoQuad")}>Cargo</button>
             <button data-on={vehicle === "quadLow"} onClick={() => setVehicle("quadLow")}>Quad · low</button>
             <button data-on={vehicle === "quadFpv"} onClick={() => setVehicle("quadFpv")}>Quad · FPV</button>
             <button data-on={vehicle === "ugvTracked"} onClick={() => setVehicle("ugvTracked")}>UGV</button>

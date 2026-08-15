@@ -19,7 +19,7 @@ export function timeToHour(t) {
 }
 
 // v7: urban mission with open-ground start/goal.
-const KEY = "umbra.mission.v9";
+const KEY = "umbra.mission.v10";
 
 export function saveMission(m) {
   try { localStorage.setItem(KEY, JSON.stringify(m)); } catch (e) {}

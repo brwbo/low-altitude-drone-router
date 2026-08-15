@@ -16,12 +16,16 @@ export const CONFIG = {
     start: [48.1596, 24.4599],   // forward logistics point
     goal: [48.2655, 24.4251],    // objective, 12 km north up the valley
     // [lat, lon, mastHeight m, rangeKm]
+    // Masts at 30 m with 6 km reach: tall enough that terrain alone cannot
+    // hide a cruising platform, which is what leaves the sun room to change
+    // the route. Against short-range sensors the ground already hides you
+    // completely and morning and evening plan the identical path.
     enemies: [
-      [48.2100, 24.4380, 12, 3],
-      [48.1850, 24.4480, 12, 3],
-      [48.2350, 24.4320, 12, 3],
-      [48.2600, 24.4300, 12, 3],
-      [48.1700, 24.4550, 12, 3],
+      [48.2100, 24.4380, 30, 6],
+      [48.1850, 24.4480, 30, 6],
+      [48.2350, 24.4320, 30, 6],
+      [48.2600, 24.4300, 30, 6],
+      [48.1700, 24.4550, 30, 6],
     ],
   },
   buildDatetime(date, hour) {
