@@ -97,9 +97,13 @@ Said before a judge asks:
   building height unevenly and it does not contain power lines, cables or
   individual masts, which are the obstacles that actually kill low-flying
   aircraft. Do not fly anything on this.
-- **Shadow helps against eyes and cameras only.** Thermal imaging does not
-  care, and sun-warmed ground can make a cool airframe more visible in shadow
-  rather than less. Radar does not care at all.
+- **Shadow and sun glare help against eyes and cameras only.** Thermal
+  imaging does not care, and sun-warmed ground can make a cool airframe more
+  visible in shadow rather than less. Radar does not care at all. The tool
+  applies the glare advantage only to threats marked optical, and discounts
+  detection rather than removing it - a dazzled observer is degraded, not
+  blind. The wedge width and the sun-height cut-off are planning defaults,
+  not measured thresholds.
 - **No endurance check.** A route the tool considers good may be longer than
   the platform can travel. Nothing currently validates this.
 - **Never validated by anyone who has planned a real flight.** This is a

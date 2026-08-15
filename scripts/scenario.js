@@ -8,7 +8,8 @@ import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, combineCeilings, exposureCount } from "../src/viewshed.js";
 import { hiddenFraction } from "../src/corridor.js";
 import { solarPosition, sunTimes } from "../src/sun.js";
-import { computeShadow, glareIsEffective } from "../src/shadow.js";
+import { computeShadow } from "../src/shadow.js";
+import { computeGlare, weightedExposure, glareCoverage, isOptical } from "../src/glare.js";
 import { findPath } from "../src/pathfind.js";
 import { encodePng, hillshadeRgb, blend } from "../src/png.js";
 import { parseThreats, describeThreat, ThreatInputError } from "../src/threats.js";
@@ -94,6 +95,12 @@ for (const threat of threats) {
 const ceiling = combineCeilings(ceilings, cellCount);
 const slope = computeSlope(dem);
 
+// Where an observer at each threat would be looking into the sun. Optical
+// threats only - radar does not care what the sun is doing, and thermal can
+// invert.
+const glares = threats.map((threat) => computeGlare(dem, threat, sun));
+const opticalCount = threats.filter(isOptical).length;
+
 // -------------------------------------------------- the altitude trade-off
 // The single most important output. Cover does not degrade gently with
 // height; it falls away, and this is the curve that shows it.
@@ -119,7 +126,9 @@ const rendered = {};
 for (const id of order) {
   const vehicle = VEHICLES[id];
   const passable = computeTrafficable(dem, vehicle, slope);
-  const exposure = exposureCount(dem, ceilings, vehicle.heightAboveGround);
+  // Weighted, not counted: a dazzled optical observer counts for half.
+  const exposure = weightedExposure(dem, ceilings, glares, vehicle.heightAboveGround,
+    { glareDiscount: 0.5 });
   const grids = { passable: passable, exposure: exposure, shadow: shadowResult.shadow, elev: dem.elev };
 
   // Direct is the shortest passable route, ignoring who can see it. Planned
@@ -173,35 +182,94 @@ if (notes.length > 0) {
 }
 
 // ------------------------------------------------------- departure window
-// Terrain shadow and low-sun glare both help against optical sensors only,
-// and both peak near dawn and dusk. A marginal advantage, not a substitute
-// for terrain masking - which is why it is reported as a window to choose
-// rather than folded silently into the route cost.
-console.log("\n--- departure window (optical advantage only) ---");
-const windows = [];
-for (let hour = 3; hour <= 19; hour++) {
-  const at = new Date(Date.UTC(2026, 7, 15, hour, 0, 0));
-  const s = solarPosition(at, lat, lon);
-  if (s.elevation <= 0) {
+// Analysed against THE ACTUAL ROUTE, not the whole map. What matters is not
+// how much terrain is shadowed somewhere, but how much of the ground you will
+// actually be exposed on has an observer squinting into the sun.
+//
+// The two effects pull against each other and the tool should say so rather
+// than pick for you: a low sun gives the most shadow and the most glare, but
+// the shadow discount also tempts the router onto more exposed ground.
+console.log("\n--- departure window, measured on the route itself ---");
+const reference = VEHICLES.quadLow;
+const referencePassable = computeTrafficable(dem, reference, slope);
+
+const options = [];
+for (let minute = 180; minute <= 1110; minute += 30) {
+  const at = new Date(Date.UTC(2026, 7, 15, 0, minute));
+  const s2 = solarPosition(at, lat, lon);
+  if (s2.elevation <= 0) {
     continue;
   }
-  const shade = computeShadow(dem, s);
-  windows.push({ at: at, sun: s, shadowed: shade.shadowedFraction, glare: glareIsEffective(s) });
+  const shade = computeShadow(dem, s2);
+  const g = threats.map((t) => computeGlare(dem, t, s2));
+  const exposureNow = weightedExposure(dem, ceilings, g, reference.heightAboveGround,
+    { glareDiscount: 0.5 });
+  const r = findPath(dem, start, goal,
+    { passable: referencePassable, exposure: exposureNow, shadow: shade.shadow, elev: dem.elev },
+    { vehicle: reference, exposurePenalty: EXPOSURE_PENALTY, shadowDiscount: 0.35 });
+  if (!r.found) {
+    continue;
+  }
+
+  let exposedCells = 0;
+  let dazzledCells = 0;
+  for (const index of r.trace) {
+    let seen = 0;
+    let dazzled = 0;
+    for (let c = 0; c < ceilings.length; c++) {
+      if (dem.elev[index] + reference.heightAboveGround > ceilings[c][index]) {
+        seen = seen + 1;
+        if (g[c][index] === 1) dazzled = dazzled + 1;
+      }
+    }
+    if (seen > 0) {
+      exposedCells = exposedCells + 1;
+      if (dazzled > 0) dazzledCells = dazzledCells + 1;
+    }
+  }
+  const exposedSeconds = (exposedCells * dem.cellSize) / reference.speed;
+  options.push({
+    at: at, sun: s2,
+    exposedSeconds: exposedSeconds,
+    dazzledFraction: exposedCells === 0 ? 0 : dazzledCells / exposedCells,
+    // Seconds spent exposed to an observer who can see you clearly.
+    clearlySeenSeconds: exposedSeconds * (1 - (exposedCells === 0 ? 0 : dazzledCells / exposedCells)),
+  });
 }
-windows.sort((a, b) => b.shadowed - a.shadowed);
-for (const w of windows.slice(0, 4)) {
+
+options.sort((a, b) => a.clearlySeenSeconds - b.clearlySeenSeconds);
+console.log("  " + "time".padEnd(11) + "sun".padStart(14) + "exposed".padStart(10) +
+  "dazzled".padStart(10) + "clearly seen".padStart(14));
+for (const o of options.slice(0, 6)) {
   console.log(
-    "  " + w.at.toISOString().slice(11, 16) + " UTC   sun " +
-    w.sun.elevation.toFixed(1).padStart(5) + " deg " + bearingName(w.sun.azimuth).padEnd(4) +
-    "   " + pct(w.shadowed).padStart(6) + " of terrain shadowed" +
-    (w.glare ? "   plus glare from " + bearingName(w.sun.azimuth) : "")
+    "  " + (o.at.toISOString().slice(11, 16) + " UTC").padEnd(11) +
+    (o.sun.elevation.toFixed(1) + " " + bearingName(o.sun.azimuth)).padStart(14) +
+    (o.exposedSeconds.toFixed(0) + "s").padStart(10) +
+    pct(o.dazzledFraction).padStart(10) +
+    (o.clearlySeenSeconds.toFixed(0) + "s").padStart(14)
   );
 }
+const bestWindow = options[0];
+const worstWindow = options[options.length - 1];
+console.log("\n  Best departure " + bestWindow.at.toISOString().slice(11, 16) + " UTC: " +
+  bestWindow.clearlySeenSeconds.toFixed(0) + "s clearly seen, against " +
+  worstWindow.clearlySeenSeconds.toFixed(0) + "s at " +
+  worstWindow.at.toISOString().slice(11, 16) + " UTC.");
+if (bestWindow.dazzledFraction > 0.01) {
+  console.log("  Approach from " + bearingName(bestWindow.sun.azimuth) +
+    " puts the sun behind you from " + pct(bestWindow.dazzledFraction) +
+    " of the ground you can be seen on.");
+} else {
+  console.log("  No glare advantage is available at that time on this route - the" +
+    "\n  geometry does not put any optical observer into the sun.");
+}
+console.log("  " + opticalCount + " of " + threats.length +
+  " threats are optical. Radar and EW are unaffected by any of this.");
 console.log("  sunrise " + times.sunrise.toISOString().slice(11, 16) +
   " UTC, sunset " + times.sunset.toISOString().slice(11, 16) + " UTC");
-console.log("  NOTE: shadow and glare degrade eyes and cameras only. Thermal is");
-console.log("  unaffected and can invert. Radar does not care at all. Terrain");
-console.log("  masking is the part that works against every sensor.");
+console.log("  NOTE: glare and shadow degrade eyes and cameras only. Radar does not");
+console.log("  care. Thermal does not either, and can invert. Terrain masking is the");
+console.log("  part that works against every sensor.");
 
 // ----------------------------------------------------------------- render
 for (const id of Object.keys(rendered)) {
