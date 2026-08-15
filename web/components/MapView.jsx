@@ -23,6 +23,7 @@ export default function MapView() {
   const [ready, setReady] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [showHint, setShowHint] = useState(true);
+  const [stats, setStats] = useState(null);
 
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -44,12 +45,13 @@ export default function MapView() {
     const map = mapRef.current;
     if (exposureRef.current) { map.removeLayer(exposureRef.current); exposureRef.current = null; }
   }
-  function drawRoute(route, cls) {
+  function drawRoute(route, cls, dashed) {
     const L = LRef.current, map = mapRef.current;
-    const color = cls === "route-amber" ? "#f5a623" : "#4aa3ff";
-    routeLayersRef.current.push(
-      L.polyline(route, { color, weight: 4, opacity: 0.95, className: `route-line ${cls}` }).addTo(map)
-    );
+    const color = cls === "route-amber" ? "#f5a623" : cls === "route-direct" ? "#ff5c5c" : "#4aa3ff";
+    const opts = dashed
+      ? { color, weight: 3, opacity: 0.6, dashArray: "5 9" }
+      : { color, weight: 4, opacity: 0.95, className: `route-line ${cls}` };
+    routeLayersRef.current.push(L.polyline(route, opts).addTo(map));
   }
   function drawExposure(exposure) {
     const L = LRef.current, map = mapRef.current;
@@ -87,12 +89,15 @@ export default function MapView() {
         setLive(am.live);
         drawRoute(am.route, "route-amber");
         drawRoute(pm.route, "route-blue");
+        setStats(null);
         setSun(null);
       } else {
         const data = await fetchRoute({ ...body, datetime: CONFIG.buildDatetime(date, hour) }, hour);
         setLive(data.live);
         drawExposure(data.exposure);
-        drawRoute(data.route, mode === "morning" ? "route-amber" : "route-blue");
+        if (data.direct?.route) drawRoute(data.direct.route, "route-direct", true);
+        drawRoute((data.planned && data.planned.route) || data.route, "route-amber");
+        setStats(data.stats || null);
         setSun(data.sun);
       }
     } finally {
@@ -240,9 +245,16 @@ export default function MapView() {
           </div>
         </div>
 
+        {stats && (
+          <div className="saving">
+            <div className="savingnum">−{stats.reductionPct}%</div>
+            <div className="savinglabel">time exposed · {stats.directSeconds}s → {stats.plannedSeconds}s<br />+{stats.detourPct}% distance</div>
+          </div>
+        )}
+
         <div className="legend">
-          <div className="row"><span className="sw line" style={{ background: "#f5a623" }} />Morning approach</div>
-          <div className="row"><span className="sw line" style={{ background: "#4aa3ff" }} />Evening approach</div>
+          <div className="row"><span className="sw line dash" />Direct — shortest</div>
+          <div className="row"><span className="sw line" style={{ background: "#f5a623" }} />Planned — concealed</div>
           <div className="row"><span className="sw" style={{ background: "rgba(255,60,45,.6)" }} />Exposed to threats</div>
         </div>
 

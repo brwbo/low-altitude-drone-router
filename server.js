@@ -27,7 +27,7 @@ const cellCount = dem.width * dem.height;
 const obstacleHeight = loadObstacleHeightsSync(dem);
 const surface = buildSurface(dem, obstacleHeight);
 const slope = computeSlope(dem);
-const vehicle = resolveVehicles("air").vehicles[0];        // one representative air platform
+const vehicle = resolveVehicles("quadLow").vehicles[0];     // low-cruise quad (endurance-feasible)
 const passable = computeTrafficable(dem, vehicle, slope, obstacleHeight);
 const EXPOSURE_PENALTY = 50;
 const AGL = vehicle.heightAboveGround;
@@ -70,14 +70,20 @@ function plan(body) {
   }
 
   const grids = { passable, exposure, opticalShare, shadow: shadowResult.shadow, elev: dem.elev };
-  const planned = findPath(dem, cell(sLat, sLon), cell(gLat, gLon), grids,
-    { vehicle, exposurePenalty: EXPOSURE_PENALTY, shadowDiscount: 0.35 });
+  const s = cell(sLat, sLon), g = cell(gLat, gLon);
+  // direct = shortest passable route (ignores who sees it); planned = concealed.
+  const direct = findPath(dem, s, g, grids, { vehicle, exposurePenalty: 0 });
+  const planned = findPath(dem, s, g, grids, { vehicle, exposurePenalty: EXPOSURE_PENALTY, shadowDiscount: 0.35 });
   if (!planned.found) return { error: planned.reason || "no route found" };
 
-  const route = planned.trace.map((i) => {
+  const toLL = (trace) => trace.map((i) => {
     const ll = gridToLonLat(dem, i % dem.width, Math.floor(i / dem.width));
     return [ll.lat, ll.lon];
   });
+  const route = toLL(planned.trace);
+  const directRoute = direct.found ? toLL(direct.trace) : route;
+  const dSec = direct.found ? direct.exposedSeconds : planned.exposedSeconds;
+  const pSec = planned.exposedSeconds;
 
   // downsample the exposure field into the overlay grid, normalised 0..1
   const rows = 80, cols = 80, grid = [];
@@ -95,6 +101,15 @@ function plan(body) {
 
   return {
     route,
+    direct: { route: directRoute, exposedSeconds: Math.round(dSec) },
+    planned: { route, exposedSeconds: Math.round(pSec) },
+    stats: {
+      directSeconds: Math.round(dSec),
+      plannedSeconds: Math.round(pSec),
+      reductionPct: dSec > 0 ? Math.round((1 - pSec / dSec) * 100) : 0,
+      detourPct: (direct.found && direct.metres > 0) ? Math.round((planned.metres / direct.metres - 1) * 100) : 0,
+      vehicle: vehicle.label,
+    },
     sun: { azimuth_deg: sun.azimuth, altitude_deg: sun.elevation },
     exposure: { bbox: [dem.latBottom, dem.lonLeft, dem.latTop, dem.lonRight], rows, cols, grid },
   };
