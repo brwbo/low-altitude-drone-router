@@ -1,6 +1,7 @@
 // The altitude profile must be concealed where it can be, flyable everywhere,
 // and honest about the segments where neither is possible.
 
+import { TEST_START, TEST_GOAL, TEST_THREATS } from "../src/testScenario.js";
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, combineCeilings } from "../src/viewshed.js";
 import { findPath } from "../src/pathfind.js";
@@ -18,7 +19,7 @@ function check(label, passed, detail) {
 const dem = loadDemSync();
 const cellCount = dem.width * dem.height;
 const mission = JSON.parse(fs.readFileSync("data/threats.json", "utf8"));
-const threats = parseThreats(mission.threats, dem);
+const threats = parseThreats(TEST_THREATS, dem);
 const ceilings = threats.map((t) =>
   computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres }));
 const ceiling = combineCeilings(ceilings, cellCount);

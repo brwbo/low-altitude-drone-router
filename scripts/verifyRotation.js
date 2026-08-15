@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { TEST_START, TEST_GOAL, TEST_THREATS } from "../src/testScenario.js";
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, exposureCount } from "../src/viewshed.js";
 import { planRotation, worstOverlap, rotationCost } from "../src/rotation.js";
@@ -16,7 +17,7 @@ const dem = loadDemSync();
 const cellCount = dem.width * dem.height;
 const vehicle = VEHICLES.quadLow;
 const mission = JSON.parse(fs.readFileSync("data/threats.json", "utf8"));
-const threats = parseThreats(mission.threats, dem);
+const threats = parseThreats(TEST_THREATS, dem);
 const ceilings = threats.map((t) =>
   computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres }));
 const grids = {

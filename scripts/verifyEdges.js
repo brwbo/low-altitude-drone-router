@@ -15,7 +15,7 @@ import { solarPosition, sunTimes } from "../src/sun.js";
 import { findPath } from "../src/pathfind.js";
 import { parseThreat, parseThreats, ThreatInputError } from "../src/threats.js";
 import { parseLatLon, lonLatToGrid, gridToLonLat, insideBounds } from "../src/coords.js";
-import { VEHICLES, computeSlope, computeTrafficable, checkEndurance } from "../src/vehicles.js";
+import { VEHICLES, computeSlope, computeTrafficable, checkEndurance, resolveVehicles } from "../src/vehicles.js";
 import { computeFloor, computeHeadroom, hiddenFraction } from "../src/corridor.js";
 
 let failures = 0;
@@ -405,8 +405,13 @@ check("the shipped goal is inside the map",
 // the demo has a hole in it.
 const startCell = lonLatToGrid(dem, missionCheck.mission.start.lat, missionCheck.mission.start.lon);
 const goalCell = lonLatToGrid(dem, missionCheck.mission.goal.lat, missionCheck.mission.goal.lon);
+// Only the platforms the mission actually declares. Asserting a wheeled UGV
+// can fly an air mission is demanding something the mission never claimed,
+// and it turned the suite red the moment a launch point was moved onto ground
+// no ground vehicle could leave.
+const declared = resolveVehicles(missionCheck.mission.vehicle).vehicles.map((v) => v.id);
 let everyPlatformRoutes = true;
-for (const id of ["ugvTracked", "ugvWheeled", "quadNap", "quadLow", "quadFpv"]) {
+for (const id of declared) {
   const v = VEHICLES[id];
   const p = computeTrafficable(dem, v, slope);
   const r = findPath(dem,

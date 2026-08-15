@@ -1,26 +1,26 @@
 {
   "_comment": "Enemy sensor positions are ALWAYS operator input. Nothing in this codebase detects, identifies or locates anything - it computes geometry from coordinates a human entered. Positions must fall inside the loaded map: lat 48.0001 to 48.3399, lon 24.2304 to 24.7693.",
-  "_placementNote": "Sensors sit on SUNLIT high ground 120-600 m off the routed path. Two things drove this. Placement is against the ACTUAL routed path rather than the straight line - an earlier attempt used the straight line the route never follows and left every sensor 1.3-3.2 km away, out of range and blind. And they are kept out of terrain shadow, which is why the demo runs at 05:00 rather than 04:00: at 6 degrees of sun 62% of the terrain is shadowed and there is almost nowhere sunlit to put them, while at 16 degrees only 24% is. That gives the tactically right picture anyway - sensors on sunlit ridges, drone in shadowed valleys.",
+  "_placementNote": "Launch is a village - the only genuinely BUILT ground on this tile. Buildings are 0.08% of the map against 7.6% woodland, so 'built-up' here means one settlement, not a town. Sensors sit on ground that is NEVER in terrain shadow across the whole working day, 07:30 to 20:00 local (04:30-17:00 UTC) - 14.4% of the map qualifies. They are also placed against the ACTUAL routed path rather than the straight line, which an earlier revision got wrong and left every sensor 1.3-3.2 km out of range.",
   "mission": {
     "start": {
-      "label": "forward logistics point",
-      "lat": 48.0705,
-      "lon": 24.291
+      "label": "village launch point",
+      "lat": 48.2698,
+      "lon": 24.3581
     },
     "goal": {
       "label": "resupply drop",
-      "lat": 48.0705,
-      "lon": 24.4526
+      "lat": 48.148,
+      "lon": 24.2829
     },
-    "timeUtc": "2026-08-15T05:00:00Z",
+    "timeUtc": "2026-08-15T17:00:00Z",
     "vehicle": "air"
   },
   "threats": [
     {
-      "label": "west end observation post",
+      "label": "north ridge observation post",
       "type": "optical",
-      "lat": 48.0726,
-      "lon": 24.2999,
+      "lat": 48.213,
+      "lon": 24.3504,
       "mastHeight": 6,
       "maxRangeKm": 0.8,
       "confidence": "medium",
@@ -28,10 +28,10 @@
       "rangeSource": "NATO STO MSG-SET-183 (as of 2025-11, sto.nato.int): a PURPOSE-BUILT optical system with a 30x PTZ camera classifies a DJI-class drone at about 1 km. A soldier with binoculars looking for a 30 cm airframe does considerably worse, and a practitioner account (as of 2025-11, reddit.com/r/CombatFootage) reports small drones being essentially invisible from the ground above ~20 m altitude. 800 m is generous."
     },
     {
-      "label": "mid valley radar",
+      "label": "saddle radar",
       "type": "radar",
-      "lat": 48.0586,
-      "lon": 24.3924,
+      "lat": 48.2084,
+      "lon": 24.3492,
       "mastHeight": 12,
       "maxRangeKm": 3,
       "confidence": "medium",
@@ -39,10 +39,10 @@
       "rangeSource": "Australian Army Occasional Paper 29 (as of 2024-10, researchcentre.army.gov.au): target-detection radar acquires Mavic-class quadcopters at only 3-4 km. Lower bound taken."
     },
     {
-      "label": "east end observation post",
+      "label": "south ridge observation post",
       "type": "optical",
-      "lat": 48.0554,
-      "lon": 24.4336,
+      "lat": 48.1955,
+      "lon": 24.3431,
       "mastHeight": 6,
       "maxRangeKm": 0.8,
       "confidence": "medium",
@@ -53,5 +53,6 @@
   "_missionNote": "A 15 km EAST-WEST corridor, chosen so the sun flips the picture. The sun rises at 76 deg (ENE) and sets at 285 deg (WNW) here on 15 August, so an observation post at the WEST end looks EAST along the corridor and is dazzled at dawn, while the post at the EAST end looks WEST and is dazzled at dusk. The radar between them is unaffected either way, which is the contrast worth showing: the sun degrades eyes and cameras and does nothing to radar.",
   "_startNote": "Start sits on 5 degree ground. An earlier version was 90 m away on a 30.3 degree slope, which the tracked UGV could not leave - and the old candidate-sampling router returned a 16.5 km route from it anyway, crossing 11 impassable cells and reporting the endurance as OK.",
   "_vehicleNote": "mission.vehicle takes a class (\"ground\", \"air\", \"all\") or a specific platform id (\"ugvTracked\", \"quadLow\", ...). A class plans for every platform in it so the trade-off stays visible. Ground vehicles go around obstacles of any height; aircraft are stopped only by obstacles that reach their operating altitude.",
-  "_rangeNote": "RANGES ARE FOR A SMALL QUADCOPTER TARGET, WHICH IS THE POINT MOST SOURCES SKIP. Published figures are for purpose-built sensors against a target worth detecting; a 30 cm airframe is a far smaller thing to see and the range collapses accordingly. Detection range scales with target size, so numbers quoted for aircraft or vehicles do not transfer. Revision three: 20/25/30 km invented, then 2/4/4 km from sensor benchmarks, now 0.8/2/3 km for a small drone specifically. CAVEAT THAT TRAVELS WITH ALL OF THESE: there is no published dataset for UNAIDED human detection ranges - every figure is a sensor benchmark used as a proxy. Dossier: Research/Web/2026-08-15 - realistic visual detection range line of sight for a soldier observer spotting d.md"
+  "_rangeNote": "RANGES ARE FOR A SMALL QUADCOPTER TARGET, WHICH IS THE POINT MOST SOURCES SKIP. Published figures are for purpose-built sensors against a target worth detecting; a 30 cm airframe is a far smaller thing to see and the range collapses accordingly. Detection range scales with target size, so numbers quoted for aircraft or vehicles do not transfer. Revision three: 20/25/30 km invented, then 2/4/4 km from sensor benchmarks, now 0.8/2/3 km for a small drone specifically. CAVEAT THAT TRAVELS WITH ALL OF THESE: there is no published dataset for UNAIDED human detection ranges - every figure is a sensor benchmark used as a proxy. Dossier: Research/Web/2026-08-15 - realistic visual detection range line of sight for a soldier observer spotting d.md",
+  "_timeNote": "ALL TIMES IN THIS FILE ARE UTC; the area is UTC+3 in summer. Sunrise is 06:18 local and sunset 20:36 local, so the demo time of 17:00 UTC is 20:00 LOCAL - low evening sun, 5 degrees up, 67% of the terrain in shadow. Worth stating because a local time read as UTC lands after dark and makes every sunlit placement look impossible."
 }

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { TEST_START, TEST_GOAL, TEST_THREATS } from "../src/testScenario.js";
 import { loadDemSync, findExtremes } from "../src/demNode.js";
 import { computeCeiling, combineCeilings } from "../src/viewshed.js";
 import { computeLinkCeiling, inContact, assessLink, usableCorridor } from "../src/datalink.js";
@@ -75,7 +76,7 @@ check("a total blackout lasts the whole route",
 
 // The corridor that matters is the intersection, and it can only be smaller.
 const mission = JSON.parse(fs.readFileSync("data/threats.json", "utf8"));
-const threats = parseThreats(mission.threats, dem);
+const threats = parseThreats(TEST_THREATS, dem);
 const ceiling = combineCeilings(threats.map((t) =>
   computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres })), cellCount);
 const contact = inContact(dem, linkCeiling, 15);
