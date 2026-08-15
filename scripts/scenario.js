@@ -237,6 +237,80 @@ for (const vehicle of selection.vehicles) {
   }
 }
 
+// --------------------------------------------------------- the route
+// ONE recommended route, chosen by a rule rather than by taste.
+//
+// Sweep BOTH the platform and the exposure weight, and take the combination
+// with the least time in view that the platform can still actually fly.
+// Concealment is what the tool is for; endurance decides whether a plan is
+// real. Anything more concealed than the battery allows is not a route.
+//
+// Sweeping the platform too matters more than expected: the low-cruise
+// quadcopter cannot afford ANY concealment detour on this mission - every
+// weight above zero breaks its endurance - while the cargo quadcopter, slower
+// and heavier but with more in reserve, takes a 25% detour and cuts time in
+// view by 94%. Fixing the platform first would have hidden that entirely.
+//
+// DELIBERATELY NOT SUN-WEIGHTED, and that is a judgement call. Sun awareness
+// changes the path only while the sun is low, and here it buys about one
+// second of effective exposure. It also degrades eyes and cameras only, so
+// every claim about it needs a caveat about radar and thermal. A route that
+// holds at any hour is worth more than that second. The sun is still reported
+// below, because it costs nothing to say.
+{
+  const penalties = [0, 25, 50, 100, 200, 400, 800];
+  let best = null;
+
+  for (const v of selection.vehicles) {
+    const passable = computeTrafficable(dem, v, slope, obstacleHeight);
+    const exposure = exposureCount(dem, ceilings, v.heightAboveGround);
+    const grids = { passable, exposure, shadow: shadowResult.shadow, elev: dem.elev };
+    const direct = findPath(dem, start, goal, grids, { vehicle: v, exposurePenalty: 0 });
+    if (!direct.found) continue;
+
+    for (const penalty of penalties) {
+      const r = findPath(dem, start, goal, grids, { vehicle: v, exposurePenalty: penalty });
+      if (!r.found) continue;
+      const e = checkEndurance(r, v);
+      // Not a break: a higher weight can find a shorter route than a lower
+      // one, so an infeasible rung does not mean everything above it is too.
+      if (!e.feasible) continue;
+      if (best === null || r.exposedSeconds < best.route.exposedSeconds) {
+        best = { vehicle: v, route: r, direct: direct, endurance: e, penalty: penalty };
+      }
+    }
+  }
+
+  console.log("\n--- recommended route ---");
+  if (best === null) {
+    console.log("  no platform in this class can fly this mission. Nothing below applies.");
+  } else {
+    const cut = best.direct.exposedSeconds > 0
+      ? (1 - best.route.exposedSeconds / best.direct.exposedSeconds) * 100 : 0;
+    const detour = (best.route.metres / best.direct.metres - 1) * 100;
+    console.log("  platform        " + best.vehicle.label + " at " +
+      best.vehicle.heightAboveGround + " m AGL");
+    console.log("");
+    console.log("  fly straight    " + (best.direct.metres / 1000).toFixed(1) + " km    " +
+      best.direct.exposedSeconds.toFixed(0) + "s in view, longest unbroken " +
+      best.direct.longestExposedRun.toFixed(0) + "s");
+    console.log("  RECOMMENDED     " + (best.route.metres / 1000).toFixed(1) + " km    " +
+      best.route.exposedSeconds.toFixed(0) + "s in view, longest unbroken " +
+      best.route.longestExposedRun.toFixed(0) + "s");
+    console.log("");
+    console.log("  " + cut.toFixed(0) + "% less time in view for " + detour.toFixed(0) +
+      "% more distance, with " + (best.endurance.marginFraction * 100).toFixed(0) +
+      "% of endurance still in reserve.");
+    console.log("  Chosen by sweeping platform and exposure weight together and keeping the");
+    console.log("  least-seen route that still fits the battery.");
+    if (best.route.shadowedSeconds > 0) {
+      console.log("  For information, not routed for: " + best.route.shadowedSeconds.toFixed(0) +
+        "s of it lies in terrain shadow with the sun " + sun.elevation.toFixed(0) + " deg up.");
+      console.log("  Shadow degrades eyes and cameras only; the route holds without it.");
+    }
+  }
+}
+
 if (notes.length > 0) {
   console.log("\n--- what will not work, and why ---");
   for (const note of notes) {

@@ -5,6 +5,9 @@ import fs from "node:fs";
 import { loadDemSync } from "../src/demNode.js";
 import { computeCeiling, exposureCount } from "../src/viewshed.js";
 import { computeShadow } from "../src/shadow.js";
+import { loadObstacleHeightsSync } from "../src/obstaclesNode.js";
+import { buildSurface } from "../src/obstacles.js";
+import { computeGradedGlare, weightedExposure } from "../src/glare.js";
 import { solarPosition } from "../src/sun.js";
 import { findPath } from "../src/pathfind.js";
 import { parseThreats } from "../src/threats.js";
@@ -19,6 +22,14 @@ function check(label, passed, detail) {
 
 const dem = loadDemSync();
 const cellCount = dem.width * dem.height;
+const slope = computeSlope(dem);
+// The demo sweeps line of sight over the SURFACE - ground plus trees and
+// buildings - and gates trafficability on the same obstacles. Testing bare
+// terrain instead measured a different tool: far less exposure, no gradient
+// between balanced and safest, and nothing for the sun to work with.
+const obstacleHeight = loadObstacleHeightsSync(dem);
+const surface = buildSurface(dem, obstacleHeight);
+
 const mission = JSON.parse(fs.readFileSync("data/threats.json", "utf8"));
 
 // The corridor controls place their OWN threats rather than using the shipped
@@ -31,13 +42,26 @@ const mission = JSON.parse(fs.readFileSync("data/threats.json", "utf8"));
 // These sit directly over the corridor with generous range, so there is
 // always real exposure to reduce.
 const threats = parseThreats([
-  { label: "overwatch A", type: "optical", lat: 48.1900, lon: 24.4450, mastHeight: 10, maxRangeKm: 12 },
-  { label: "overwatch B", type: "radar", lat: 48.2300, lon: 24.4300, mastHeight: 10, maxRangeKm: 12 },
+  // Positioned on ground that genuinely overwatches the corridor, with the
+  // sourced sensor ranges. Two earlier versions of this scenario were wrong in
+  // opposite directions and both made checks meaningless:
+  //
+  //   the shipped mission - retuning the demo turned the suite red, which is
+  //   the scenario changing rather than the router breaking
+  //   two blanket 12 km sensors - they covered everything, so the minimum-
+  //   exposure route was already found at penalty 50 and "safest beats
+  //   balanced" could never be true
+  //
+  // What a gradient test needs is threats that leave a CHOICE: enough exposure
+  // on the direct line to matter, and enough clear ground that paying for a
+  // detour buys something.
+  { label: "east ridge OP", type: "optical", lat: 48.1723, lon: 24.4793, mastHeight: 6, maxRangeKm: 2 },
+  { label: "west ridge EW", type: "ew", lat: 48.1820, lon: 24.4259, mastHeight: 18, maxRangeKm: 4 },
+  { label: "south radar", type: "radar", lat: 48.1520, lon: 24.4520, mastHeight: 12, maxRangeKm: 4 },
 ], dem);
 const ceilings = threats.map((t) =>
-  computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres })
+  computeCeiling(dem, t, { observerHeight: t.mastHeight, maxRangeMetres: t.maxRangeMetres, surface: surface })
 );
-const slope = computeSlope(dem);
 const cell = (s) => {
   const c = lonLatToGrid(dem, s.lat, s.lon);
   return { x: Math.round(c.x), y: Math.round(c.y) };
@@ -51,7 +75,7 @@ console.log("\nCORRIDOR  the planned route must be a route, and a sane one");
 
 for (const id of ["ugvTracked", "quadLow"]) {
   const vehicle = VEHICLES[id];
-  const passable = computeTrafficable(dem, vehicle, slope);
+  const passable = computeTrafficable(dem, vehicle, slope, obstacleHeight);
   const exposure = exposureCount(dem, ceilings, vehicle.heightAboveGround);
   const grids = { passable, exposure, shadow, elev: dem.elev };
 
@@ -95,7 +119,7 @@ for (const id of ["ugvTracked", "quadLow"]) {
 console.log("\n  shadow discount is clamped and never inverts the cost");
 const v = VEHICLES.quadLow;
 const grids = {
-  passable: computeTrafficable(dem, v, slope),
+  passable: computeTrafficable(dem, v, slope, obstacleHeight),
   exposure: exposureCount(dem, ceilings, v.heightAboveGround),
   shadow: shadow,
   elev: dem.elev,
@@ -123,6 +147,10 @@ for (let y = 380; y < 430; y++) {
 const behaviour = [];
 for (const id of ["ugvTracked", "quadNap", "quadLow", "quadFpv"]) {
   const v = VEHICLES[id];
+  // Bare slope, not the real obstacle layer: this section isolates ONE
+  // synthetic obstacle. Carrying the real trees and buildings as well means
+  // the baseline route already detours around them and the comparison
+  // measures nothing.
   const clear = computeTrafficable(dem, v, slope);
   const withObstacle = computeTrafficable(dem, v, slope, obstacle);
   const wrap = (p) => ({ passable: p, exposure: new Uint8Array(cellCount), elev: dem.elev });
@@ -215,6 +243,68 @@ check("  ground and air do not overlap", overlap.length === 0);
 check("  ground plus air covers every platform",
   ground.length + air.length === Object.keys(VEHICLES).length,
   ground.length + " ground + " + air.length + " air of " + Object.keys(VEHICLES).length);
+
+// -------------------------------------------------------- route options
+console.log("\n  safest and reduced-visibility must behave as advertised");
+
+{
+  const v = VEHICLES.quadLow;
+  const passable = computeTrafficable(dem, v, slope, obstacleHeight);
+  const plain = exposureCount(dem, ceilings, v.heightAboveGround);
+  const grids = { passable, exposure: plain, shadow: null, elev: dem.elev };
+
+  const balanced = findPath(dem, start, goal, grids, { vehicle: v, exposurePenalty: 50 });
+  const safest = findPath(dem, start, goal, grids, { vehicle: v, exposurePenalty: 400 });
+
+  console.log("    balanced " + (balanced.metres / 1000).toFixed(1) + " km / " +
+    balanced.exposedSeconds.toFixed(0) + "s, safest " + (safest.metres / 1000).toFixed(1) +
+    " km / " + safest.exposedSeconds.toFixed(0) + "s");
+  check("  safest is less exposed than balanced",
+    safest.exposedSeconds < balanced.exposedSeconds,
+    safest.exposedSeconds.toFixed(0) + "s vs " + balanced.exposedSeconds.toFixed(0) + "s");
+  check("  and pays for it in distance", safest.metres > balanced.metres,
+    ((safest.metres / balanced.metres - 1) * 100).toFixed(0) + "% further");
+  check("  safest is still a bounded detour", safest.metres < balanced.metres * 2);
+
+  // A HIGH sun must leave the sun-aware route identical to the plain one:
+  // nothing is dazzled, nothing is shadowed, so there is nothing to exploit.
+  // A LOW sun must change it. This pair is the check that the sun input is
+  // actually wired to the router rather than merely reported alongside it.
+  function sunAwareRoute(hourUtc) {
+    const at = new Date(Date.UTC(2026, 7, 15, Math.floor(hourUtc), (hourUtc % 1) * 60));
+    const sun = solarPosition(at, 48.17, 24.5);
+    const shadow = computeShadow(dem, sun).shadow;
+    const glares = threats.map((t) => computeGradedGlare(dem, t, sun));
+    const weighted = weightedExposure(dem, ceilings, glares, v.heightAboveGround,
+      { glareDiscount: 0.5 });
+    return {
+      sun,
+      route: findPath(dem, start, goal,
+        { passable, exposure: weighted, shadow, elev: dem.elev },
+        { vehicle: v, exposurePenalty: 50, shadowDiscount: 0.35 }),
+    };
+  }
+  const same = (a, b) => a.trace.length === b.trace.length &&
+    a.trace.every((c, i) => c === b.trace[i]);
+
+  const high = sunAwareRoute(10.5);
+  const low = sunAwareRoute(16.5);
+  console.log("    sun " + high.sun.elevation.toFixed(0) + " deg -> " +
+    (same(high.route, balanced) ? "same as balanced" : "diverges") + ", sun " +
+    low.sun.elevation.toFixed(0) + " deg -> " +
+    (same(low.route, balanced) ? "same as balanced" : "diverges"));
+  check("  a high sun leaves the route unchanged", same(high.route, balanced));
+  check("  a low sun changes it", !same(low.route, balanced));
+
+  // Whatever it does to the path, it must never break the hard constraints.
+  let allPassable = true;
+  for (const index of low.route.trace) {
+    if (passable[index] === 0) allPassable = false;
+  }
+  check("  the sun-aware route stays on passable ground", allPassable);
+  check("  and stays a bounded detour", low.route.metres < balanced.metres * 2,
+    ((low.route.metres / balanced.metres - 1) * 100).toFixed(0) + "% vs balanced");
+}
 
 console.log("");
 if (failures > 0) {
