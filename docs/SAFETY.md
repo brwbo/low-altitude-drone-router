@@ -23,7 +23,9 @@ list of coordinates somebody typed in.
   horizon. This is trigonometry over a height grid. It is the same computation
   a game engine performs to decide where a shadow falls.
 - Computes terrain shadow from solar geometry for a given timestamp.
-- Scores candidate routes and returns the one with least exposure.
+- Finds the least-cost route over ground the vehicle can actually cross
+  (Dijkstra), weighing distance, climb and time spent in view of a threat.
+- Checks the route against the platform's endurance, including the climb.
 
 ## What it does not do
 
@@ -104,8 +106,11 @@ Said before a judge asks:
   detection rather than removing it - a dazzled observer is degraded, not
   blind. The wedge width and the sun-height cut-off are planning defaults,
   not measured thresholds.
-- **No endurance check.** A route the tool considers good may be longer than
-  the platform can travel. Nothing currently validates this.
+- **Endurance figures are placeholders.** The check itself is real - level
+  distance and climb are charged separately against a reserve - but the
+  speeds, capacities and endurances in `src/vehicles.js` are order-of-
+  magnitude estimates, not manufacturer specifications, and are labelled as
+  such in the source.
 - **Never validated by anyone who has planned a real flight.** This is a
   one-day prototype built by two people with no operational background. The
   premise is untested.
@@ -127,7 +132,7 @@ Said before a judge asks:
 1. Threat positions are input, never output.
 2. No detection, no identification, no targeting.
 3. Deterministic geometry only, no model to be confidently wrong.
-4. No personal data, no network access at runtime, no imagery of anywhere.
+4. No personal data, no third-party host contacted, no imagery of anywhere.
 5. Every limitation above is stated in the pitch, not discovered by a judge.
 6. No claimed property this build does not actually have.
 
