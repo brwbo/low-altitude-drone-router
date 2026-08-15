@@ -143,6 +143,41 @@ console.log("  cover removed by the second threat: " + pct(lost));
 check("second threat removes real cover", lost > 0.05, pct(lost) + " removed, need > 5.0%");
 check("some cover still survives two threats", hiddenBoth > 0.10, pct(hiddenBoth));
 
+// ---------------------------------------------------------------- step 6
+console.log("\nSTEP 6  Endurance check must reject what the platform cannot do");
+
+const { VEHICLES, checkEndurance } = await import("../src/vehicles.js");
+const quad = VEHICLES.quadLow;
+
+// A route inside the level range with no climbing must be feasible; one well
+// beyond it must not be. Asserting only one direction would pass on a function
+// that always returned the same answer.
+const shortRoute = { metres: 5000, ascentMetres: 0 };
+const longRoute = { metres: 200000, ascentMetres: 0 };
+const shortResult = checkEndurance(shortRoute, quad);
+const longResult = checkEndurance(longRoute, quad);
+
+console.log("  " + quad.label + " level range: " + (shortResult.levelRangeMetres / 1000).toFixed(1) + " km");
+check("5 km route is feasible", shortResult.feasible === true);
+check("200 km route is not feasible", longResult.feasible === false);
+
+// Climbing must consume endurance. Same distance, different ascent.
+const flat = checkEndurance({ metres: 15000, ascentMetres: 0 }, quad);
+const hilly = checkEndurance({ metres: 15000, ascentMetres: 1200 }, quad);
+console.log(
+  "  15 km flat needs " + (flat.requiredSeconds / 60).toFixed(0) +
+  " min, same distance with 1200 m of climb needs " + (hilly.requiredSeconds / 60).toFixed(0) + " min"
+);
+check("climbing costs endurance", hilly.requiredSeconds > flat.requiredSeconds);
+
+// The reserve must actually be held back, not quietly spent.
+const usableIfNoReserve = quad.enduranceMinutes * 60;
+check(
+  "reserve is withheld from the usable budget",
+  flat.usableSeconds < usableIfNoReserve,
+  (flat.usableSeconds / 60).toFixed(0) + " min usable of " + quad.enduranceMinutes + " min total"
+);
+
 console.log("");
 if (failures > 0) {
   console.log(failures + " CHECK(S) FAILED - do not build on this");

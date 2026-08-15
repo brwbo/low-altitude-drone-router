@@ -21,6 +21,8 @@ import {
   trafficableFraction,
   concealedFraction,
   computeUsable,
+  checkEndurance,
+  describeEndurance,
 } from "../src/vehicles.js";
 
 const missionFile = process.argv[2] || "data/threats.json";
@@ -118,12 +120,14 @@ console.log("\nroute   " + start.label + " -> " + goal.label +
 // --- per vehicle ----------------------------------------------------------
 const order = ["ugvTracked", "ugvWheeled", "quadNap", "quadLow", "quadFpv"];
 let failures = 0;
+const infeasible = [];
 
 console.log("\n--- corridor and route by platform ---");
 console.log(
   "platform".padEnd(28) + "AGL".padStart(6) + "trafficable".padStart(13) +
   "concealed".padStart(11) + "usable".padStart(9) +
-  "direct exp".padStart(12) + "planned exp".padStart(13) + "detour".padStart(8)
+  "direct exp".padStart(12) + "planned exp".padStart(13) + "detour".padStart(8) +
+  "endurance".padStart(18)
 );
 
 for (const id of order) {
@@ -151,6 +155,13 @@ for (const id of order) {
   const direct = planned.direct;
   const best = planned.best;
   const detour = ((best.metres / direct.metres - 1) * 100).toFixed(0) + "%";
+  const endurance = checkEndurance(best, vehicle);
+  if (!endurance.feasible) {
+    infeasible.push(vehicle.label + ": " + describeEndurance(endurance) +
+      "  (" + (best.metres / 1000).toFixed(1) + " km, " +
+      best.ascentMetres.toFixed(0) + " m of climb, level range " +
+      (endurance.levelRangeMetres / 1000).toFixed(0) + " km)");
+  }
 
   console.log(
     vehicle.label.padEnd(28) +
@@ -160,7 +171,10 @@ for (const id of order) {
     pct(usableCount / cellCount).padStart(9) +
     (direct.exposedSeconds.toFixed(0) + " s").padStart(12) +
     (best.exposedSeconds.toFixed(0) + " s").padStart(13) +
-    detour.padStart(8)
+    detour.padStart(8) +
+    (endurance.feasible
+      ? ("OK " + (endurance.marginFraction * 100).toFixed(0) + "% spare")
+      : ("OVER by " + (-endurance.marginFraction * 100).toFixed(0) + "%")).padStart(18)
   );
 
   if (best.exposedSeconds > direct.exposedSeconds) {
@@ -199,6 +213,14 @@ for (const id of order) {
     fs.writeFileSync(file, encodePng(dem.width, dem.height, rgb));
     console.log("    wrote " + file);
   }
+}
+
+if (infeasible.length > 0) {
+  console.log("\n--- endurance: these routes cannot be flown ---");
+  for (const line of infeasible) {
+    console.log("  " + line);
+  }
+  console.log("  (endurance figures are planning placeholders, not manufacturer specs)");
 }
 
 console.log(

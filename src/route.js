@@ -6,6 +6,10 @@
 // best-scoring path gives a route that looks the same on screen and takes a
 // fraction of the effort.
 
+// Sustained rise, in metres, before it counts as climbing. Below this it is
+// elevation-model noise, not a hill.
+const ASCENT_THRESHOLD = 8;
+
 // Deterministic generator, so the same seed always yields the same route.
 // A route that changes between the rehearsal and the demo is not a route.
 function makeRandom(seed) {
@@ -31,7 +35,10 @@ function scorePath(dem, points, grids, options) {
   let exposedSeconds = 0;
   let shadowedSeconds = 0;
   let blockedCells = 0;
+  let ascentMetres = 0;
+  let descentMetres = 0;
   let cost = 0;
+  let climbReference = null;
   const trace = [];
 
   for (let leg = 0; leg < points.length - 1; leg++) {
@@ -69,12 +76,24 @@ function scorePath(dem, points, grids, options) {
       }
 
       // Climbing costs energy, and it costs a UGV far more than an aircraft.
-      if (trace.length > 1) {
-        const previousIndex = trace[trace.length - 2];
-        const rise = grids.elev[index] - grids.elev[previousIndex];
-        if (rise > 0) {
-          cost = cost + rise * options.climbPenalty;
-        }
+      //
+      // Ascent uses a hysteresis threshold rather than summing every positive
+      // step. Adding up 30 m cell-to-cell deltas over a 50 km route counts
+      // every ripple in the elevation model as a hill and inflates total climb
+      // several times over - the same effect that makes a coastline's length
+      // depend on the ruler. Only a sustained rise past ASCENT_THRESHOLD is
+      // real climbing.
+      const here = grids.elev[index];
+      if (climbReference === null) {
+        climbReference = here;
+      } else if (here > climbReference + ASCENT_THRESHOLD) {
+        const rise = here - climbReference;
+        ascentMetres = ascentMetres + rise;
+        cost = cost + rise * options.climbPenalty;
+        climbReference = here;
+      } else if (here < climbReference - ASCENT_THRESHOLD) {
+        descentMetres = descentMetres + (climbReference - here);
+        climbReference = here;
       }
 
       const seenBy = grids.exposure[index];
@@ -100,6 +119,8 @@ function scorePath(dem, points, grids, options) {
     exposedSeconds: exposedSeconds,
     shadowedSeconds: shadowedSeconds,
     blockedCells: blockedCells,
+    ascentMetres: ascentMetres,
+    descentMetres: descentMetres,
     cost: cost,
   };
 }

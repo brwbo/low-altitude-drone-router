@@ -2,8 +2,16 @@
   "_comment": "Enemy sensor positions are ALWAYS operator input. Nothing in this codebase detects, identifies or locates anything - it computes geometry from coordinates a human entered. Positions must fall inside the loaded map: lat 48.0001 to 48.3399, lon 24.2304 to 24.7693.",
   "_placementNote": "Threats on commanding ground dominate the result. These three sit on the highest points within 6 km of the route (2052 m, 1720 m, 1583 m). Put a sensor in a valley and it sees almost nothing, which is correct but makes for a demo that shows no red at all.",
   "mission": {
-    "start": { "label": "forward logistics point", "lat": 48.0250, "lon": 24.2500 },
-    "goal": { "label": "resupply drop", "lat": 48.3200, "lon": 24.7500 },
+    "start": {
+      "label": "forward logistics point",
+      "lat": 48.1604,
+      "lon": 24.4603
+    },
+    "goal": {
+      "label": "resupply drop",
+      "lat": 48.2655,
+      "lon": 24.4251
+    },
     "timeUtc": "2026-08-15T04:30:00Z"
   },
   "threats": [
@@ -36,5 +44,6 @@
       "confidence": "medium",
       "source": "operator input"
     }
-  ]
+  ],
+  "_missionNote": "12 km along a valley rather than across the ridges, and 229 m of straight-line climb. Chosen so the endurance check passes for a quadcopter: a 58 km diagonal across the whole box was geometrically fine and unflyable by every platform."
 }

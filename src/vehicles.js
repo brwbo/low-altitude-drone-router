@@ -5,10 +5,20 @@
 // tells you nothing useful about one. Everything here either crawls on the
 // ground or hovers just above it.
 //
-//   heightAboveGround - where the vehicle (and anything looking at it) sits
-//   maxSlopeDeg       - steepest ground it can cross; Infinity for anything airborne
-//   speed             - metres per second, used to turn exposure into seconds
-//   climbPenalty      - cost per metre of altitude gained, relative to a metre travelled
+//   heightAboveGround   - where the vehicle (and anything looking at it) sits
+//   maxSlopeDeg         - steepest ground it can cross; Infinity for anything airborne
+//   speed               - metres per second, used to turn exposure into seconds
+//   climbPenalty        - route cost per metre of altitude gained
+//   enduranceMinutes    - total operating time on one charge or tank
+//   reserveFraction     - share of endurance held back and never planned into
+//   climbSecondsPerMetre - endurance consumed per metre of ascent, expressed as
+//                          equivalent seconds of level travel
+//
+// THE NUMBERS BELOW ARE PLANNING PLACEHOLDERS, NOT MANUFACTURER SPECIFICATIONS.
+// They are order-of-magnitude estimates chosen so the endurance check does
+// something meaningful in a demo. Nobody verified them against a real platform.
+// Any real use must replace them with figures from the actual vehicle, and the
+// pitch should say so rather than quote them as if they were measured.
 
 export const VEHICLES = {
   ugvTracked: {
@@ -19,6 +29,9 @@ export const VEHICLES = {
     maxSlopeDeg: 30,
     speed: 2.5,
     climbPenalty: 6,
+    enduranceMinutes: 240,
+    reserveFraction: 0.2,
+    climbSecondsPerMetre: 2.0,
   },
   ugvWheeled: {
     id: "ugvWheeled",
@@ -28,6 +41,9 @@ export const VEHICLES = {
     maxSlopeDeg: 20,
     speed: 5,
     climbPenalty: 8,
+    enduranceMinutes: 180,
+    reserveFraction: 0.2,
+    climbSecondsPerMetre: 2.5,
   },
   quadNap: {
     id: "quadNap",
@@ -37,6 +53,9 @@ export const VEHICLES = {
     maxSlopeDeg: Infinity,
     speed: 8,
     climbPenalty: 3,
+    enduranceMinutes: 35,
+    reserveFraction: 0.25,
+    climbSecondsPerMetre: 0.6,
   },
   quadLow: {
     id: "quadLow",
@@ -46,6 +65,9 @@ export const VEHICLES = {
     maxSlopeDeg: Infinity,
     speed: 12,
     climbPenalty: 3,
+    enduranceMinutes: 40,
+    reserveFraction: 0.25,
+    climbSecondsPerMetre: 0.5,
   },
   quadFpv: {
     id: "quadFpv",
@@ -55,8 +77,53 @@ export const VEHICLES = {
     maxSlopeDeg: Infinity,
     speed: 25,
     climbPenalty: 2,
+    enduranceMinutes: 15,
+    reserveFraction: 0.25,
+    climbSecondsPerMetre: 0.4,
   },
 };
+
+// Can this platform actually complete this route?
+//
+// A route the geometry likes is worthless if the vehicle runs out of battery
+// halfway along it. Level distance and total ascent are charged separately,
+// because climbing 1400 m of Carpathian ridge costs a tracked UGV far more
+// than the same distance on the flat.
+export function checkEndurance(route, vehicle) {
+  const usableSeconds =
+    vehicle.enduranceMinutes * 60 * (1 - vehicle.reserveFraction);
+  const levelSeconds = route.metres / vehicle.speed;
+  const climbSeconds = route.ascentMetres * vehicle.climbSecondsPerMetre;
+  const requiredSeconds = levelSeconds + climbSeconds;
+
+  return {
+    usableSeconds: usableSeconds,
+    levelSeconds: levelSeconds,
+    climbSeconds: climbSeconds,
+    requiredSeconds: requiredSeconds,
+    feasible: requiredSeconds <= usableSeconds,
+    // Positive means spare capacity, negative means short by that fraction.
+    marginFraction: (usableSeconds - requiredSeconds) / usableSeconds,
+    // How far this platform could go on the level with no climbing at all.
+    levelRangeMetres: usableSeconds * vehicle.speed,
+  };
+}
+
+export function describeEndurance(endurance) {
+  const minutes = (s) => (s / 60).toFixed(0) + " min";
+  if (endurance.feasible) {
+    return (
+      "FEASIBLE, needs " + minutes(endurance.requiredSeconds) +
+      " of " + minutes(endurance.usableSeconds) + " usable (" +
+      (endurance.marginFraction * 100).toFixed(0) + "% spare)"
+    );
+  }
+  return (
+    "NOT FEASIBLE, needs " + minutes(endurance.requiredSeconds) +
+    " but only " + minutes(endurance.usableSeconds) + " usable (short by " +
+    (-endurance.marginFraction * 100).toFixed(0) + "%)"
+  );
+}
 
 // Ground slope in degrees at every cell. Needed for UGV trafficability, and
 // reused by the hillshade.
